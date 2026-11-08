@@ -1,5 +1,17 @@
 {{template "head" .}}
     <h1>Geronimo</h1>
     <p>Signed in as {{.Name}} ({{.Email}}).</p>
+    <section id="pre-consent">
+        <h2>Connect your Gmail</h2>
+        <p>Here is what Geronimo does with your mail, and what it never does.</p>
+        <ul>
+            <li>Geronimo can read, archive, and move email to trash.</li>
+            <li>Geronimo shows short message previews.</li>
+            <li>Geronimo never permanently deletes mail.</li>
+            <li>Geronimo never reads message bodies.</li>
+        </ul>
+        <p>Google asks for your consent next. You can remove Geronimo's access in your Google account at any time.</p>
+        <form id="connect-gmail" method="post" action="/connect/google/start"><button type="submit">Connect Gmail</button></form>
+    </section>
     <form method="post" action="/signout"><button type="submit">Sign out</button></form>
 {{template "foot" .}}
