@@ -1,0 +1,753 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Geronimo mock (Phase 1)</title>
+<style>
+    :root {
+        --bg: #f4f5f7; --card: #fff; --ink: #1c2330; --mute: #6b7485; --line: #e3e6ec;
+        --accent: #2f5fd0; --accent-ink: #fff; --good: #1d8a4e; --warn: #b7791f; --bad: #c0392b;
+        --gmail: #d93025; --outlook: #0b6cbd;
+    }
+    * { box-sizing: border-box; }
+    body { margin: 0; font: 15px/1.4 system-ui, sans-serif; color: var(--ink); background: #dde1e8; }
+    button { font: inherit; color: inherit; cursor: pointer; }
+    .stage { display: flex; gap: 24px; justify-content: center; align-items: flex-start; padding: 16px; }
+    .dev { width: 260px; background: var(--card); border: 1px solid var(--line); border-radius: 12px; padding: 12px; font-size: 13px; position: sticky; top: 16px; max-height: calc(100vh - 32px); overflow: auto; }
+    .dev h2 { font-size: 13px; margin: 0 0 6px; }
+    .dev h3 { font-size: 11px; text-transform: uppercase; color: var(--mute); margin: 12px 0 4px; letter-spacing: .04em; }
+    .dev button { display: block; width: 100%; text-align: left; padding: 5px 8px; margin: 2px 0; border: 1px solid var(--line); border-radius: 6px; background: #fafbfc; }
+    .dev button:hover { background: #eef2fb; }
+    .dev select { width: 100%; padding: 4px; margin: 2px 0; }
+    .dev label { display: block; margin: 4px 0; }
+    .phone { position: relative; width: 390px; height: 800px; max-height: calc(100vh - 32px); background: var(--bg); border-radius: 28px; border: 8px solid #20252e; overflow: hidden; display: flex; flex-direction: column; }
+    .screen { flex: 1; overflow-y: auto; padding-bottom: 90px; }
+    .topbar { position: sticky; top: 0; z-index: 5; background: var(--card); border-bottom: 1px solid var(--line); padding: 10px 14px; display: flex; align-items: center; gap: 8px; }
+    .topbar h1 { font-size: 17px; margin: 0; flex: 1; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .iconbtn { min-width: 44px; min-height: 44px; border: 0; background: none; font-size: 18px; border-radius: 8px; }
+    .tabbar { position: absolute; bottom: 0; left: 0; right: 0; height: 58px; background: var(--card); border-top: 1px solid var(--line); display: flex; z-index: 8; }
+    .tabbar button { flex: 1; border: 0; background: none; font-size: 12px; color: var(--mute); min-height: 44px; }
+    .tabbar button.on { color: var(--accent); font-weight: 600; }
+    .tabbar b { display: block; font-size: 18px; font-weight: 400; }
+    .pad { padding: 12px 14px; }
+    .card { background: var(--card); border: 1px solid var(--line); border-radius: 12px; padding: 12px; margin-bottom: 10px; }
+    .card h2 { font-size: 13px; margin: 0 0 8px; color: var(--mute); text-transform: uppercase; letter-spacing: .04em; }
+    .row { display: flex; align-items: center; gap: 10px; min-height: 52px; padding: 8px 12px; background: var(--card); border-bottom: 1px solid var(--line); }
+    .row.tap { cursor: pointer; }
+    .row .main { flex: 1; min-width: 0; }
+    .row .t1 { font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .row .t2 { color: var(--mute); font-size: 13px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .row.read .t1 { font-weight: 400; color: var(--mute); }
+    .meta { text-align: right; font-size: 12px; color: var(--mute); white-space: nowrap; }
+    .chip { display: inline-block; font-size: 11px; padding: 1px 7px; border-radius: 10px; color: #fff; margin-right: 3px; vertical-align: middle; }
+    .chip.g { background: var(--gmail); } .chip.o { background: var(--outlook); }
+    .badge { background: var(--accent); color: #fff; border-radius: 10px; padding: 0 7px; font-size: 12px; font-weight: 600; }
+    .badge.zero { background: var(--line); color: var(--mute); }
+    .btn { min-height: 44px; padding: 0 16px; border-radius: 10px; border: 1px solid var(--line); background: var(--card); font-weight: 600; }
+    .btn.primary { background: var(--accent); color: var(--accent-ink); border-color: var(--accent); }
+    .btn.danger { color: var(--bad); }
+    .btn.block { display: block; width: 100%; margin: 8px 0; }
+    .btn.sm { min-height: 36px; padding: 0 10px; font-size: 13px; }
+    .banner { margin: 10px 14px 0; padding: 10px 12px; border-radius: 10px; font-size: 14px; }
+    .banner.warn { background: #fff4de; border: 1px solid #f0d49a; }
+    .banner.info { background: #e8effc; border: 1px solid #c4d4f5; }
+    .banner button { margin-top: 6px; }
+    .strip { background: var(--accent); color: #fff; font-size: 12px; padding: 4px 14px; }
+    .bar { height: 8px; background: var(--line); border-radius: 4px; overflow: hidden; margin: 8px 0; }
+    .bar i { display: block; height: 100%; background: var(--accent); transition: width .2s; }
+    .bar.good i { background: var(--good); }
+    .grid3 { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; }
+    .tile { border: 1px solid var(--line); border-radius: 12px; background: var(--card); padding: 12px 6px; text-align: center; min-height: 72px; }
+    .tile b { display: block; font-size: 22px; }
+    .tile span { font-size: 12px; color: var(--mute); }
+    .pill { position: sticky; top: 64px; z-index: 4; text-align: center; padding: 6px 0; }
+    .pill button { background: var(--accent); color: #fff; border: 0; border-radius: 16px; padding: 8px 16px; box-shadow: 0 2px 8px #0003; min-height: 36px; }
+    .ctrl { display: flex; gap: 6px; padding: 8px 14px; overflow-x: auto; background: var(--card); border-bottom: 1px solid var(--line); align-items: center; }
+    .ctrl select, .ctrl button { min-height: 36px; border: 1px solid var(--line); border-radius: 18px; background: #fafbfc; padding: 0 10px; font-size: 13px; white-space: nowrap; }
+    .ctrl .on { background: var(--accent); color: #fff; border-color: var(--accent); }
+    .crumb { font-size: 12px; color: var(--mute); padding: 6px 14px 0; }
+    .selbar { position: absolute; bottom: 58px; left: 0; right: 0; background: #20252e; color: #fff; display: flex; gap: 4px; padding: 6px 8px; align-items: center; z-index: 9; }
+    .selbar span { flex: 1; font-size: 13px; padding-left: 6px; }
+    .selbar button { min-height: 44px; border: 0; background: #3a4150; color: #fff; border-radius: 8px; padding: 0 10px; }
+    .chk { width: 44px; height: 44px; display: grid; place-items: center; margin: -8px -6px -8px -10px; }
+    .chk input { width: 20px; height: 20px; }
+    .star { min-width: 44px; min-height: 44px; border: 0; background: none; font-size: 20px; color: #c3c8d2; margin: -8px -8px -8px 0; }
+    .star.on { color: #e3a008; }
+    .toast { position: absolute; left: 10px; right: 10px; bottom: 70px; z-index: 20; background: #20252e; color: #fff; border-radius: 10px; padding: 10px 12px; display: flex; gap: 10px; align-items: center; font-size: 14px; }
+    .toast span { flex: 1; }
+    .toast button { background: none; border: 0; color: #9fc0ff; font-weight: 700; min-height: 36px; }
+    .modal { position: absolute; inset: 0; background: #0008; z-index: 30; display: flex; align-items: flex-end; }
+    .modal .sheet { background: var(--card); width: 100%; border-radius: 18px 18px 0 0; padding: 16px; }
+    .modal.center { align-items: center; padding: 20px; }
+    .modal.center .sheet { border-radius: 16px; }
+    .sheet h3 { margin: 0 0 6px; }
+    .sheet p { color: var(--mute); margin: 6px 0 10px; }
+    .center-col { padding: 28px 20px; text-align: center; }
+    .center-col h1 { font-size: 22px; margin: 12px 0 6px; }
+    .center-col p { color: var(--mute); }
+    .logo { font-size: 44px; }
+    .list { text-align: left; background: var(--card); border: 1px solid var(--line); border-radius: 12px; padding: 10px 14px 10px 30px; margin: 12px 0; font-size: 14px; }
+    .list li { margin: 4px 0; }
+    .never { color: var(--bad); }
+    .empty { text-align: center; padding: 50px 24px; color: var(--mute); }
+    .empty .big { font-size: 48px; }
+    .empty h2 { color: var(--ink); margin: 6px 0; }
+    .kv { display: flex; justify-content: space-between; padding: 6px 0; border-bottom: 1px solid var(--line); font-size: 14px; }
+    .kv:last-child { border: 0; }
+    .st { font-size: 12px; font-weight: 600; }
+    .st.healthy { color: var(--good); } .st.syncing { color: var(--accent); } .st.reauth { color: var(--bad); }
+    .tab-note { font-size: 12px; color: var(--mute); }
+    .newtab { background: #fff; border-radius: 12px; overflow: hidden; width: 100%; }
+    .newtab .url { background: #eef0f4; padding: 8px 10px; font: 12px monospace; word-break: break-all; }
+    .newtab .body { padding: 16px; }
+    @media (max-width: 720px) {
+        .stage { flex-direction: column-reverse; align-items: center; padding: 0; }
+        .dev { width: 100%; position: static; max-height: none; border-radius: 0; }
+        .phone { width: 100%; height: 100vh; max-height: none; border: 0; border-radius: 0; }
+    }
+</style>
+</head>
+<body>
+<div class="stage">
+    <aside class="dev" id="dev"></aside>
+    <main class="phone" id="phone"></main>
+</div>
+<script>
+"use strict";
+
+// Static mock. Data is fake. State is in memory; reload resets it.
+
+const ACCT = {
+    g: { id: "g", name: "Gmail", email: "sam@gmail.com", chip: "Gmail" },
+    o: { id: "o", name: "Outlook", email: "sam@contoso.com", chip: "Outlook" }
+};
+const TOPICS = ["Work", "Finance", "Shopping", "Newsletters", "Social", "Travel", "Other"];
+const URG = ["Needs action today", "This week", "Whenever", "No urgency"];
+const PAGE = 10;
+
+function mk(sender, subject, mins, acct, topic, urg, unread, flag) {
+    return { id: 0, sender, subject, mins, acct, topic, urg, unread, flag: !!flag, archived: false, trashed: false };
+}
+
+function seed() {
+    const e = [
+        mk("Dana Whitfield", "Q4 budget review: need your sign-off", 12, "o", "Work", 0, true),
+        mk("Priya Nair", "Contract redlines attached", 55, "o", "Work", 0, true),
+        mk("Jira", "[GEO-142] Assigned to you: Sync retry logic", 140, "o", "Work", 1, true),
+        mk("Marcus Lee", "Lunch Thursday?", 300, "g", "Social", 2, true),
+        mk("Chase", "Your statement is ready", 400, "g", "Finance", 1, true),
+        mk("Chase", "Unusual card activity: please confirm", 35, "g", "Finance", 0, true),
+        mk("Fidelity", "Quarterly report available", 1500, "g", "Finance", 3, false),
+        mk("Delta Air Lines", "Check in opens for your flight to SFO", 90, "g", "Travel", 0, true),
+        mk("Booking.com", "Your stay in Lisbon is confirmed", 2900, "g", "Travel", 2, false, true),
+        mk("Amazon", "Your package was delivered", 200, "g", "Shopping", 3, true),
+        mk("Etsy", "Items in your cart are selling fast", 700, "g", "Shopping", 3, true),
+        mk("The Morning Brief", "Today: markets, weather, one big story", 240, "g", "Newsletters", 3, true),
+        mk("Hacker Digest", "Top 10 stories this week", 1000, "g", "Newsletters", 3, true),
+        mk("LinkedIn", "5 people viewed your profile", 600, "g", "Social", 3, true),
+        mk("Sofia Alvarez", "Re: slides for Monday", 80, "o", "Work", 1, false, true),
+        mk("Dr. Patel's Office", "Appointment reminder: Friday 9:30", 180, "g", "Other", 1, true),
+        mk("HR Team", "Open enrollment closes this week", 1200, "o", "Work", 1, true),
+        mk("Mom", "Photos from the weekend", 3500, "g", "Social", 2, false),
+        mk("noreply@city.gov", "Parking permit renewal notice", 5000, "g", null, 2, true),
+        mk("Unknown Sender", "Notice regarding your account", 4400, "o", null, 3, true)
+    ];
+    // Bulk sender: Acme Deals, mixed accounts, for pagination and bulk actions.
+    for (let i = 0; i < 34; i++) {
+        e.push(mk("Acme Deals", "Flash sale #" + (i + 1) + ": up to " + (20 + i) + "% off", 30 + i * 140, i % 4 === 0 ? "o" : "g", "Shopping", 3, i % 5 !== 4));
+    }
+    e.forEach((x, i) => { x.id = i + 1; });
+    return e;
+}
+
+const S = {
+    emails: [],
+    connected: [],          // account ids
+    status: { g: "healthy", o: "healthy" },
+    ob: { step: "signin", provider: null, returnTo: "app" },  // onboarding / connect flow, null when in app
+    nav: [{ n: "home" }],
+    tab: "home",
+    sel: new Set(),
+    sort: "newest",
+    unreadOnly: false,
+    acctF: "all",
+    page: PAGE,
+    baseline: 0,
+    syncPct: 100,
+    syncTotal: 31000,
+    syncFail: "none",
+    lastSync: 0,
+    pending: [],
+    simFail: false,
+    toast: null,
+    modal: null,
+    firstRun: true
+};
+let syncTimer = null;
+let toastTimer = null;
+
+// ---------- Helpers ----------
+const $ = (id) => document.getElementById(id);
+const fmtAge = (m) => m < 60 ? m + "m" : m < 1440 ? Math.floor(m / 60) + "h" : Math.floor(m / 1440) + "d";
+const chip = (a) => '<span class="chip ' + a + '">' + ACCT[a].chip + "</span>";
+const chips = (set) => Array.from(set).sort().map(chip).join("");
+const plural = (n, w) => n + " " + w + (n === 1 ? "" : "s");
+
+function visible(e) {
+    return S.connected.indexOf(e.acct) >= 0 && !e.trashed;
+}
+function inbox(e) {
+    return visible(e) && !e.archived;
+}
+function inboxList() {
+    return S.emails.filter(inbox);
+}
+function topicOf(e) { return e.topic || "Other"; }
+function keyOf(view, e) {
+    return view === "topic" ? topicOf(e) : view === "sender" ? e.sender : URG[e.urg];
+}
+function groups(view) {
+    const m = new Map();
+    inboxList().forEach((e) => {
+        const k = keyOf(view, e);
+        if (!m.has(k)) m.set(k, { key: k, total: 0, unread: 0, newest: 1e9, accts: new Set() });
+        const g = m.get(k);
+        g.total++;
+        if (e.unread) g.unread++;
+        g.newest = Math.min(g.newest, e.mins);
+        g.accts.add(e.acct);
+    });
+    return Array.from(m.values());
+}
+function sortGroups(view, gs) {
+    if (view === "urgency") return gs.sort((a, b) => URG.indexOf(a.key) - URG.indexOf(b.key));
+    if (view === "topic") return gs.sort((a, b) => TOPICS.indexOf(a.key) - TOPICS.indexOf(b.key));
+    return gs.sort((a, b) => b.total - a.total);
+}
+function unreadCount() { return inboxList().filter((e) => e.unread).length; }
+function followList() { return S.emails.filter((e) => visible(e) && e.flag); }
+function cur() { return S.nav[S.nav.length - 1]; }
+function reauth() { return S.connected.filter((a) => S.status[a] === "reauth"); }
+
+function setToast(msg, undo, retry) {
+    S.toast = { msg, undo, retry };
+    clearTimeout(toastTimer);
+    toastTimer = setTimeout(() => { S.toast = null; render(); }, 7000);
+}
+
+// ---------- Actions ----------
+const LABEL = { read: "Marked read", archive: "Archived", delete: "Moved to trash", follow: "Marked for follow-up", unfollow: "Follow-up removed" };
+
+function applyOne(e, kind) {
+    if (kind === "read") e.unread = false;
+    if (kind === "archive") e.archived = true;
+    if (kind === "delete") e.trashed = true;
+    if (kind === "follow") e.flag = true;
+    if (kind === "unfollow") e.flag = false;
+}
+
+function act(kind, ids) {
+    const targets = S.emails.filter((e) => ids.indexOf(e.id) >= 0);
+    const failed = [];
+    const done = [];
+    targets.forEach((e) => {
+        if (S.simFail && e.acct === "o" && ids.length > 1) { failed.push(e); return; }
+        done.push({ id: e.id, snap: { unread: e.unread, archived: e.archived, trashed: e.trashed, flag: e.flag } });
+        applyOne(e, kind);
+    });
+    S.sel.clear();
+    const undo = () => {
+        done.forEach((d) => Object.assign(S.emails.find((x) => x.id === d.id), d.snap));
+        S.toast = null;
+    };
+    if (failed.length) {
+        const msg = LABEL[kind] + " " + done.length + " of " + targets.length + ". " + failed.length + " failed in Outlook.";
+        setToast(msg, undo, () => {
+            S.simFail = false;
+            act(kind, failed.map((f) => f.id));
+        });
+    } else {
+        setToast(LABEL[kind] + (targets.length > 1 ? " (" + targets.length + ")" : ""), undo);
+    }
+    render();
+}
+
+function openEmail(id) {
+    const e = S.emails.find((x) => x.id === id);
+    e.unread = false;   // write-back to provider
+    const url = e.acct === "g"
+        ? "https://mail.google.com/mail/u/?authuser=" + encodeURIComponent(ACCT.g.email) + "#inbox/" + (0x1a2b00 + e.id).toString(16)
+        : "https://outlook.office.com/mail/id/" + (e.id + 4000) + "  (Graph webLink)";
+    S.modal = { type: "newtab", e, url };
+    render();
+}
+
+function refresh() {
+    S.lastSync = 0;
+    setToast("Synced just now");
+    render();
+}
+
+function startSync() {
+    clearInterval(syncTimer);
+    S.syncPct = 0;
+    syncTimer = setInterval(() => {
+        const fail = S.syncFail;
+        const cap = fail === "none" ? 100 : 45;
+        if (S.syncPct >= cap) {
+            clearInterval(syncTimer);
+            if (fail !== "none" && S.ob) S.ob.step = "syncfail";
+            if (fail === "revoked") S.status[S.ob ? S.ob.provider : "g"] = "reauth";
+            render();
+            return;
+        }
+        S.syncPct = Math.min(cap, S.syncPct + 5);
+        if (S.syncPct >= 100) {
+            clearInterval(syncTimer);
+            finishSync();
+        }
+        render();
+    }, 450);
+}
+
+function finishSync() {
+    if (S.firstRun) {
+        S.baseline = unreadCount();
+        S.firstRun = false;
+    }
+}
+
+function connect(provider) {
+    if (S.connected.indexOf(provider) < 0) S.connected.push(provider);
+    S.status[provider] = "healthy";
+    S.ob.step = "sync";
+    startSync();
+}
+
+function resetAll() {
+    clearInterval(syncTimer);
+    S.emails = seed();
+    S.connected = ["g", "o"];
+    S.status = { g: "healthy", o: "healthy" };
+    S.ob = null;
+    S.nav = [{ n: "home" }];
+    S.tab = "home";
+    S.sel.clear();
+    S.sort = "newest"; S.unreadOnly = false; S.acctF = "all"; S.page = PAGE;
+    S.syncPct = 100; S.syncFail = "none"; S.pending = []; S.simFail = false;
+    S.toast = null; S.modal = null; S.lastSync = 2;
+    S.firstRun = false;
+    S.baseline = 38;
+    $("dev").dataset.ready = "1";
+}
+
+function resetFirstRun() {
+    resetAll();
+    S.connected = [];
+    S.ob = { step: "signin", provider: null, returnTo: "app" };
+    S.firstRun = true;
+    S.baseline = 0;
+}
+
+function push(n, p) {
+    S.nav.push(Object.assign({ n }, p || {}));
+    S.sel.clear(); S.page = PAGE; S.unreadOnly = false; S.acctF = "all";
+}
+function pop() {
+    if (S.nav.length > 1) S.nav.pop();
+    S.sel.clear(); S.page = PAGE;
+}
+function tab(t) {
+    S.tab = t;
+    S.nav = [{ n: t }];
+    S.sel.clear();
+}
+
+// ---------- Screens ----------
+function topbar(title, back, right) {
+    return '<div class="topbar">' + (back ? '<button class="iconbtn" data-a="back" aria-label="Back">←</button>' : "") +
+        "<h1>" + title + "</h1>" + (right || "") + "</div>";
+}
+
+function syncLine() {
+    const t = S.lastSync === 0 ? "just now" : S.lastSync + " min ago";
+    return '<div class="tab-note" style="padding:6px 14px">Last synced ' + t + ' · <a href="#" data-a="refresh">Refresh</a></div>';
+}
+
+function bannerReauth() {
+    return reauth().map((a) =>
+        '<div class="banner warn"><b>' + ACCT[a].name + " needs to reconnect.</b> Showing the last synced data. Other accounts are not affected." +
+        '<br><button class="btn sm primary" data-a="reconnect" data-v="' + a + '">Reconnect ' + ACCT[a].name + "</button></div>").join("");
+}
+
+function syncStrip() {
+    if (S.syncPct >= 100 || S.ob) return "";
+    const done = Math.round(S.syncTotal * S.syncPct / 100);
+    return '<div class="strip">Syncing in background: ' + done.toLocaleString() + " of " + S.syncTotal.toLocaleString() + " emails</div>";
+}
+
+function pillHtml() {
+    return S.pending.length ? '<div class="pill"><button data-a="newmail">↑ ' + plural(S.pending.length, "new email") + "</button></div>" : "";
+}
+
+function scrHome() {
+    const list = inboxList();
+    const unread = list.filter((e) => e.unread);
+    const urgent = unread.filter((e) => e.urg === 0);
+    const soon = unread.filter((e) => e.urg === 1);
+    const base = S.baseline || unread.length;
+    const cleared = Math.max(0, base - unread.length);
+    const pct = base ? Math.min(100, Math.round(cleared / base * 100)) : 0;
+    const per = S.connected.map((a) => '<span style="margin-right:10px">' + chip(a) + unread.filter((e) => e.acct === a).length + "</span>").join("");
+    let h = topbar("Geronimo", false, '<button class="iconbtn" data-a="refresh" aria-label="Refresh">⟳</button>');
+    h += syncStrip() + bannerReauth() + syncLine() + pillHtml();
+    h += '<div class="pad">';
+    h += '<div class="card"><h2>Needs attention</h2>' +
+        '<div class="row tap" style="margin:-8px -12px 0;border-radius:12px 12px 0 0" data-a="group" data-view="urgency" data-key="' + URG[0] + '"><div class="main"><div class="t1">' + plural(urgent.length, "urgent email") + '</div><div class="t2">' + soon.length + " more due this week</div></div><span class=\"badge" + (urgent.length ? "" : " zero") + '">' + urgent.length + "</span></div></div>";
+    h += '<div class="card"><h2>Unread vs. baseline</h2><b style="font-size:24px">' + unread.length + '</b> <span class="tab-note">unread now · baseline ' + base + "</span>" +
+        '<div class="bar good"><i style="width:' + pct + '%"></i></div><div class="tab-note">' + cleared + " cleared since you started (" + pct + '%)</div><div style="margin-top:6px">' + per + "</div></div>";
+    h += '<div class="grid3" style="margin-bottom:10px">' +
+        ["topic:By topic:" + groups("topic").length, "sender:By sender:" + groups("sender").length, "urgency:By urgency:" + groups("urgency").length].map((s) => {
+            const p = s.split(":");
+            return '<button class="tile" data-a="view" data-v="' + p[0] + '"><b>' + p[2] + "</b><span>" + p[1] + "</span></button>";
+        }).join("") + "</div>";
+    h += '<div class="card row tap" style="padding:12px" data-a="tab" data-v="follow"><div class="main"><div class="t1">★ Follow-up</div><div class="t2">Marked emails across accounts, including read</div></div><span class="badge">' + followList().length + "</span></div>";
+    if (S.connected.length < 2) {
+        const miss = S.connected.indexOf("g") < 0 ? "g" : "o";
+        h += '<div class="banner info" style="margin:0 0 10px"><b>Connect ' + ACCT[miss].name + "</b> to see everything in one list.<br>" +
+            '<button class="btn sm primary" data-a="addacct" data-v="' + miss + '">Connect ' + ACCT[miss].name + "</button></div>";
+    }
+    return h + "</div>";
+}
+
+function scrView(p) {
+    const gs = sortGroups(p.view, groups(p.view));
+    const title = { topic: "By topic", sender: "By sender", urgency: "By urgency" }[p.view];
+    let h = topbar(title, true);
+    h += '<div class="crumb">Home › ' + title + "</div>";
+    h += '<div class="ctrl">' + ["topic", "sender", "urgency"].map((v) => '<button class="' + (v === p.view ? "on" : "") + '" data-a="swap" data-v="' + v + '">' + v + "</button>").join("") + "</div>";
+    h += bannerReauth();
+    if (!gs.length) return h + emptyAll();
+    h += gs.map((g) =>
+        '<div class="row tap" data-a="group" data-view="' + p.view + '" data-key="' + g.key.replace(/"/g, "&quot;") + '"><div class="main"><div class="t1">' + g.key + '</div><div class="t2">' + g.total + " total · newest " + fmtAge(g.newest) + " ago · " + chips(g.accts) + '</div></div><span class="badge' + (g.unread ? "" : " zero") + '">' + g.unread + "</span><span class=\"tab-note\">›</span></div>").join("");
+    return h;
+}
+
+function emptyAll() {
+    return '<div class="empty"><div class="big">🎉</div><h2>All done</h2><p>Nothing left here. Inbox clear.</p></div>';
+}
+
+function listFor(p) {
+    let l = p.view === "follow" ? followList() : inboxList().filter((e) => keyOf(p.view, e) === p.key);
+    if (S.acctF !== "all") l = l.filter((e) => e.acct === S.acctF);
+    if (S.unreadOnly) l = l.filter((e) => e.unread);
+    if (S.sort === "newest") l.sort((a, b) => a.mins - b.mins);
+    if (S.sort === "oldest") l.sort((a, b) => b.mins - a.mins);
+    if (S.sort === "sender") l.sort((a, b) => a.sender.localeCompare(b.sender));
+    return l;
+}
+
+function emailRow(e) {
+    return '<div class="row tap ' + (e.unread ? "" : "read") + '" data-a="open" data-id="' + e.id + '">' +
+        '<label class="chk" data-stop="1"><input type="checkbox" data-a="sel" data-id="' + e.id + '"' + (S.sel.has(e.id) ? " checked" : "") + ' aria-label="Select"></label>' +
+        '<div class="main"><div class="t1">' + e.sender + '</div><div class="t2" style="color:var(--ink)">' + e.subject + '</div><div class="t2">' + chip(e.acct) + "</div></div>" +
+        '<div class="meta">' + fmtAge(e.mins) + '<br><button class="star ' + (e.flag ? "on" : "") + '" data-a="star" data-id="' + e.id + '" aria-label="Follow-up">' + (e.flag ? "★" : "☆") + "</button></div></div>";
+}
+
+function ctrlBar(showAcct) {
+    let h = '<div class="ctrl"><select data-a="sort"><option value="newest"' + (S.sort === "newest" ? " selected" : "") + '>Newest</option><option value="oldest"' + (S.sort === "oldest" ? " selected" : "") + '>Oldest</option><option value="sender"' + (S.sort === "sender" ? " selected" : "") + ">Sender A–Z</option></select>";
+    h += '<button class="' + (S.unreadOnly ? "on" : "") + '" data-a="unreadonly">Unread only</button>';
+    if (showAcct) h += ["all"].concat(S.connected).map((a) => '<button class="' + (S.acctF === a ? "on" : "") + '" data-a="acctf" data-v="' + a + '">' + (a === "all" ? "All accounts" : ACCT[a].name) + "</button>").join("");
+    return h + "</div>";
+}
+
+function scrList(p) {
+    const empty = p.key === "__empty";
+    const l = empty ? [] : listFor(p);
+    const isFollow = p.view === "follow";
+    const title = isFollow ? "Follow-up" : p.key;
+    const shown = l.slice(0, S.page);
+    let h = topbar(title, !isFollow, isFollow ? "" : '<button class="btn sm" data-a="groupmenu">Clear all…</button>');
+    if (!isFollow) h += '<div class="crumb">Home › ' + ({ topic: "By topic", sender: "By sender", urgency: "By urgency" }[p.view]) + " › " + title + "</div>";
+    h += bannerReauth() + pillHtml() + ctrlBar(S.connected.length > 1);
+    if (!l.length) {
+        return h + (isFollow ? '<div class="empty"><div class="big">☆</div><h2>No follow-ups</h2><p>Tap the star on an email to keep it here.</p></div>' : emptyAll());
+    }
+    h += '<div class="tab-note" style="padding:6px 14px">' + l.length + " emails · " + l.filter((e) => e.unread).length + " unread</div>";
+    h += shown.map(emailRow).join("");
+    if (l.length > shown.length) h += '<div class="pad"><button class="btn block" data-a="more">Load more (' + (l.length - shown.length) + " left)</button></div>";
+    return h;
+}
+
+function scrAccounts() {
+    let h = topbar("Accounts", false) + syncStrip() + bannerReauth();
+    h += '<div class="pad">';
+    ["g", "o"].forEach((a) => {
+        const on = S.connected.indexOf(a) >= 0;
+        if (!on) {
+            h += '<div class="card"><b>' + chip(a) + ACCT[a].name + '</b><div class="tab-note">Not connected</div><button class="btn primary block" data-a="addacct" data-v="' + a + '">Connect ' + ACCT[a].name + "</button></div>";
+            return;
+        }
+        const st = S.status[a] === "healthy" && S.syncPct < 100 ? "syncing" : S.status[a];
+        const label = { healthy: "Healthy", syncing: "Syncing", reauth: "Needs re-auth" }[st];
+        h += '<div class="card"><b>' + chip(a) + ACCT[a].email + '</b> <span class="st ' + st + '">● ' + label + "</span>" +
+            '<div class="tab-note">' + S.emails.filter((e) => e.acct === a && inbox(e)).length + " in inbox · last synced " + (S.lastSync || "0") + " min ago</div>" +
+            (st === "reauth" ? '<button class="btn primary block" data-a="reconnect" data-v="' + a + '">Reconnect (keeps your place)</button>' : "") +
+            '<button class="btn danger block" data-a="removeacct" data-v="' + a + '">Remove account</button></div>';
+    });
+    return h + '<p class="tab-note">Removing an account deletes its stored data in Geronimo. Your mail in the provider is not touched.</p></div>';
+}
+
+function scrSettings() {
+    let h = topbar("Settings & privacy", false) + '<div class="pad">';
+    h += '<div class="card"><h2>What Geronimo stores</h2><div class="kv"><span>Email metadata</span><span>sender, subject, date, labels</span></div><div class="kv"><span>Message bodies</span><span>not read, not stored</span></div><div class="kv"><span>Attachments</span><span>never accessed</span></div><div class="kv"><span>Sign-in tokens</span><span>encrypted</span></div></div>';
+    h += '<div class="card"><h2>Scopes held</h2><div class="kv"><span>' + chip("g") + 'Gmail</span><span>read, modify labels</span></div><div class="kv"><span>' + chip("o") + 'Outlook</span><span>Mail.ReadWrite</span></div><div class="tab-note">Geronimo never permanently deletes. "Delete" moves to trash.</div></div>';
+    h += '<div class="card"><h2>Your data</h2><button class="btn block" data-a="tab" data-v="accounts">Disconnect an account</button><button class="btn danger block" data-a="confirm" data-v="deldata">Delete all my data</button><button class="btn danger block" data-a="confirm" data-v="delacct">Delete my Geronimo account</button></div>';
+    return h + "</div>";
+}
+
+// ---------- Onboarding ----------
+function scrOnboard() {
+    const o = S.ob;
+    const pv = o.provider ? ACCT[o.provider] : null;
+    if (o.step === "signin") return '<div class="center-col"><div class="logo">🪶</div><h1>Geronimo</h1><p>One place to skim and clear your inbox.</p><button class="btn primary block" data-a="ob" data-v="connect">Sign in</button><button class="btn block" data-a="ob" data-v="connect">Create account</button></div>';
+    if (o.step === "connect") return '<div class="center-col"><h1>Connect your mail</h1><p>Pick one to start. You can add the other later.</p>' +
+        '<button class="btn block" data-a="pre" data-v="g">' + chip("g") + "Connect Gmail</button><button class=\"btn block\" data-a=\"pre\" data-v=\"o\">" + chip("o") + "Connect Outlook</button></div>";
+    if (o.step === "pre") return '<div class="center-col"><h1>Before you connect ' + pv.name + '</h1><p>Here is what Geronimo can and cannot do.</p>' +
+        '<ul class="list"><li>Read the list of your emails (sender, subject, date)</li><li>Archive emails</li><li>Move emails to trash</li><li>Mark emails read and set follow-up</li><li class="never">Never permanently deletes anything</li><li class="never">Never reads message bodies</li></ul>' +
+        '<button class="btn primary block" data-a="oauth">Continue to ' + pv.name + '</button><button class="btn block" data-a="obback">Back</button></div>';
+    if (o.step === "oauth") return '<div class="center-col" style="background:#fff;min-height:100%"><div class="logo">' + (o.provider === "g" ? "G" : "▦") + "</div><h1>" + pv.name + ' sign-in</h1><p>' + pv.email + '</p><div class="card" style="text-align:left">Geronimo wants to view and manage your email metadata.</div>' +
+        '<button class="btn primary block" data-a="allow">Allow</button><button class="btn block" data-a="deny">Deny</button><p class="tab-note">(Provider consent screen, simulated)</p></div>';
+    if (o.step === "denied") return '<div class="center-col"><div class="logo">🚫</div><h1>Access not granted</h1><p>Geronimo needs permission to read your email list. Nothing was connected.</p><button class="btn primary block" data-a="oauth">Try again</button><button class="btn block" data-a="ob" data-v="connect">Choose another account</button></div>';
+    if (o.step === "sync") {
+        const done = Math.round(S.syncTotal * S.syncPct / 100);
+        return '<div class="center-col"><h1>Syncing ' + pv.name + '</h1><p>' + done.toLocaleString() + " of " + S.syncTotal.toLocaleString() + ' emails</p><div class="bar"><i style="width:' + S.syncPct + '%"></i></div>' +
+            '<button class="btn primary block" ' + (S.syncPct >= 30 ? "" : "disabled") + ' data-a="gohome">' + (S.syncPct >= 30 ? "Go to home" : "Preparing your first view…") + '</button><p class="tab-note">Sync continues in the background once you are in.</p></div>';
+    }
+    if (o.step === "syncfail") {
+        const f = S.syncFail;
+        const msg = { partial: "Some folders were skipped. 14,000 of 31,000 emails synced.", ratelimit: pv.name + " asked us to slow down. Try again in a minute.", revoked: "Access was revoked during sync. Reconnect to continue." }[f];
+        return '<div class="center-col"><div class="logo">⚠️</div><h1>Sync did not finish</h1><p>' + msg + '</p><button class="btn primary block" data-a="retrysync">' + (f === "revoked" ? "Reconnect" : "Retry") + '</button>' + (f === "partial" ? '<button class="btn block" data-a="gohome">Continue with what synced</button>' : "") + "</div>";
+    }
+    return "";
+}
+
+// ---------- Modals ----------
+function modalHtml() {
+    const m = S.modal;
+    if (!m) return "";
+    if (m.type === "newtab") {
+        const e = m.e;
+        return '<div class="modal center"><div class="sheet"><div class="tab-note">New browser tab opens</div><div class="newtab"><div class="url">' + m.url + '</div><div class="body"><b>' + e.subject + "</b><br>" + e.sender +
+            '<p class="tab-note">This is the ' + ACCT[e.acct].name + ' reader. Reply, search and read the thread here. Geronimo already marked this email read.</p></div></div>' +
+            '<button class="btn primary block" data-a="closemodal" data-v="return">Return to Geronimo</button></div></div>';
+    }
+    if (m.type === "confirm") {
+        return '<div class="modal"><div class="sheet"><h3>' + m.title + "</h3><p>" + m.text + '</p><button class="btn ' + (m.danger ? "danger" : "primary") + ' block" data-a="doconfirm">' + m.ok + '</button><button class="btn block" data-a="closemodal">Cancel</button></div></div>';
+    }
+    if (m.type === "group") {
+        return '<div class="modal"><div class="sheet"><h3>Clear all in "' + m.key + '"</h3><p>' + m.n + " emails (" + m.unread + ' unread) across ' + m.accts + '.</p>' +
+            '<button class="btn block" data-a="gact" data-v="read">Mark all read</button><button class="btn block" data-a="gact" data-v="archive">Archive all</button><button class="btn block danger" data-a="gact" data-v="delete">Move all to trash</button><button class="btn block" data-a="closemodal">Cancel</button></div></div>';
+    }
+    return "";
+}
+
+function toastHtml() {
+    const t = S.toast;
+    if (!t) return "";
+    return '<div class="toast"><span>' + t.msg + "</span>" + (t.retry ? '<button data-a="retry">Retry</button>' : "") + (t.undo ? '<button data-a="undo">Undo</button>' : "") + "</div>";
+}
+
+function selBar() {
+    if (!S.sel.size) return "";
+    return '<div class="selbar"><span>' + S.sel.size + ' selected</span><button data-a="bulk" data-v="read">Read</button><button data-a="bulk" data-v="archive">Archive</button><button data-a="bulk" data-v="delete">Delete</button><button data-a="bulk" data-v="follow">★</button></div>';
+}
+
+function tabbar() {
+    const t = [["home", "⌂", "Home"], ["follow", "★", "Follow-up"], ["accounts", "☰", "Accounts"], ["settings", "⚙", "Settings"]];
+    return '<nav class="tabbar">' + t.map((x) => '<button class="' + (S.tab === x[0] ? "on" : "") + '" data-a="tab" data-v="' + x[0] + '"><b>' + x[1] + "</b>" + x[2] + "</button>").join("") + "</nav>";
+}
+
+// ---------- Render ----------
+function render() {
+    const scrollEl = document.querySelector(".screen");
+    const keep = scrollEl ? scrollEl.scrollTop : 0;
+    let body;
+    if (S.ob) {
+        body = '<div class="screen">' + scrOnboard() + "</div>" + modalHtml();
+    } else {
+        const p = cur();
+        let s;
+        if (p.n === "home") s = scrHome();
+        else if (p.n === "view") s = scrView(p);
+        else if (p.n === "list") s = scrList(p);
+        else if (p.n === "follow") s = scrList({ view: "follow" });
+        else if (p.n === "accounts") s = scrAccounts();
+        else s = scrSettings();
+        body = '<div class="screen">' + s + "</div>" + selBar() + toastHtml() + tabbar() + modalHtml();
+    }
+    $("phone").innerHTML = body;
+    const ne = document.querySelector(".screen");
+    if (ne) ne.scrollTop = keep;   // preserve scroll position on updates and back
+    renderDev();
+}
+
+// ---------- Dev panel ----------
+function renderDev() {
+    const b = (a, l) => '<button data-d="' + a + '">' + l + "</button>";
+    $("dev").innerHTML = "<h2>Geronimo mock · Phase 1</h2><div class=\"tab-note\">Static HTML, fake data. Jump to any flow or edge state.</div>" +
+        "<h3>1 First-run</h3>" + b("first", "Start first-run (sign in)") + b("pre", "Pre-consent screen") + b("sync", "Initial sync progress") +
+        "<label>Sync outcome<select data-d-sel=\"syncFail\">" + ["none:Succeeds", "partial:Partial sync", "ratelimit:Provider rate limit", "revoked:Token revoked mid-sync"].map((x) => { const p = x.split(":"); return '<option value="' + p[0] + '"' + (S.syncFail === p[0] ? " selected" : "") + ">" + p[1] + "</option>"; }).join("") + "</select></label>" +
+        "<h3>2 Home</h3>" + b("home", "Home (unified)") +
+        "<h3>3 Drill-down</h3>" + b("topic", "Topic view") + b("sender", "Sender view") + b("urgency", "Urgency view") + b("acme", "Email list: Acme Deals (mixed, paged)") +
+        "<h3>4–6 Open, clear, follow-up</h3><div class=\"tab-note\">Tap a row to open. Select with checkboxes. Star to follow up.</div>" + b("follow", "Follow-up list") +
+        '<label><input type="checkbox" data-d-chk="simFail"' + (S.simFail ? " checked" : "") + "> Outlook fails on next bulk action</label>" +
+        "<h3>7 Freshness</h3>" + b("newmail", "Simulate 3 new emails (pill)") +
+        "<h3>8 Accounts</h3>" + b("reauth", "Outlook needs re-auth") + b("accounts", "Accounts screen") +
+        "<h3>9 Settings</h3>" + b("settings", "Settings & privacy") +
+        "<h3>10 Edge states</h3>" + b("empty", "“All done” empty state") + b("other", "“Other” group (unclassified)") +
+        "<h3>Demo</h3>" + b("reset", "Reset demo");
+}
+
+function devAction(a) {
+    S.ob = S.ob && ["first", "pre", "sync"].indexOf(a) >= 0 ? S.ob : null;
+    S.modal = null; S.toast = null;
+    if (a === "reset") { resetAll(); }
+    else if (a === "first") { resetFirstRun(); }
+    else if (a === "pre") { resetFirstRun(); S.ob = { step: "pre", provider: "g", returnTo: "app" }; }
+    else if (a === "sync") { resetFirstRun(); S.ob = { step: "sync", provider: "g", returnTo: "app" }; S.connected = ["g"]; startSync(); }
+    else if (a === "home") { tab("home"); }
+    else if (["topic", "sender", "urgency"].indexOf(a) >= 0) { tab("home"); push("view", { view: a }); }
+    else if (a === "acme") { tab("home"); push("view", { view: "sender" }); push("list", { view: "sender", key: "Acme Deals" }); }
+    else if (a === "follow") { tab("follow"); }
+    else if (a === "newmail") {
+        S.pending = [
+            mk("Dana Whitfield", "Re: Q4 budget review", 0, "o", "Work", 0, true),
+            mk("Delta Air Lines", "Gate change for DL 482", 0, "g", "Travel", 0, true),
+            mk("GitHub", "[geronimo] PR review requested", 0, "g", "Work", 1, true)
+        ];
+        tab("home");
+    }
+    else if (a === "reauth") { S.status.o = "reauth"; tab("home"); }
+    else if (a === "accounts") { tab("accounts"); }
+    else if (a === "settings") { tab("settings"); }
+    else if (a === "empty") { tab("home"); push("view", { view: "topic" }); push("list", { view: "topic", key: "__empty" }); }
+    else if (a === "other") { tab("home"); push("view", { view: "topic" }); push("list", { view: "topic", key: "Other" }); }
+    render();
+}
+
+// ---------- Events ----------
+document.addEventListener("click", (ev) => {
+    const d = ev.target.closest("[data-d]");
+    if (d) { devAction(d.dataset.d); return; }
+    const t = ev.target.closest("[data-a]");
+    if (!t) return;
+    const a = t.dataset.a;
+    const v = t.dataset.v;
+    if (a === "sel" || a === "sort") return;   // handled by change
+    if (t.tagName === "A") ev.preventDefault();
+    if (a === "open" && ev.target.closest("[data-stop], .star")) return;
+    handle(a, v, t, ev);
+});
+
+document.addEventListener("change", (ev) => {
+    const t = ev.target;
+    if (t.dataset.dSel) { S[t.dataset.dSel] = t.value; return; }
+    if (t.dataset.dChk) { S[t.dataset.dChk] = t.checked; return; }
+    if (t.dataset.a === "sel") {
+        const id = +t.dataset.id;
+        if (t.checked) S.sel.add(id); else S.sel.delete(id);
+        render();
+    }
+    if (t.dataset.a === "sort") { S.sort = t.value; render(); }
+});
+
+// List refreshes when returning from the native UI (visibilitychange in the real app).
+document.addEventListener("visibilitychange", () => { if (!document.hidden) render(); });
+
+function handle(a, v, t) {
+    switch (a) {
+        case "ob": S.ob.step = v; break;
+        case "pre": S.ob.provider = v; S.ob.step = "pre"; break;
+        case "obback": S.ob.step = S.firstRun ? "connect" : "__exit"; if (S.ob.step === "__exit") S.ob = null; break;
+        case "oauth": S.ob.step = "oauth"; break;
+        case "deny": S.ob.step = "denied"; break;
+        case "allow":
+            if (S.ob.returnTo === "reauth") { S.status[S.ob.provider] = "healthy"; S.ob = null; setToast("Reconnected. Syncing resumed."); }
+            else connect(S.ob.provider);
+            break;
+        case "gohome": S.ob = null; S.nav = [{ n: "home" }]; S.tab = "home"; if (S.firstRun) { S.baseline = unreadCount(); } break;
+        case "retrysync":
+            if (S.syncFail === "revoked") { S.status[S.ob.provider] = "healthy"; }
+            S.syncFail = "none"; S.ob.step = "sync"; startSync(); break;
+        case "tab": tab(v); break;
+        case "back": pop(); break;
+        case "view": push("view", { view: v }); break;
+        case "swap": S.nav[S.nav.length - 1] = { n: "view", view: v }; break;
+        case "group": if (cur().n !== "view") push("view", { view: t.dataset.view }); push("list", { view: t.dataset.view, key: t.dataset.key }); break;
+        case "unreadonly": S.unreadOnly = !S.unreadOnly; break;
+        case "acctf": S.acctF = v; break;
+        case "more": S.page += PAGE; break;
+        case "open": openEmail(+t.dataset.id); return;
+        case "star": {
+            const e = S.emails.find((x) => x.id === +t.dataset.id);
+            act(e.flag ? "unfollow" : "follow", [e.id]);
+            return;
+        }
+        case "bulk": act(v, Array.from(S.sel)); return;
+        case "groupmenu": {
+            const p = cur();
+            const l = listFor(p);
+            const ac = new Set(l.map((e) => e.acct));
+            S.modal = { type: "group", key: p.key, n: l.length, unread: l.filter((e) => e.unread).length, accts: Array.from(ac).map((x) => ACCT[x].name).join(" + ") };
+            break;
+        }
+        case "gact": {
+            const p = cur();
+            const l = listFor(p);
+            const verb = { read: "Mark read", archive: "Archive", delete: "Move to trash" }[v];
+            S.modal = {
+                type: "confirm", title: verb + " " + l.length + " emails from " + p.key + "?",
+                text: v === "delete" ? "They go to Trash. You can undo. Nothing is permanently deleted." : "You can undo this right after.",
+                ok: verb + " " + l.length, danger: v === "delete", run: () => act(v, l.map((e) => e.id))
+            };
+            break;
+        }
+        case "doconfirm": { const m = S.modal; S.modal = null; m.run(); return; }
+        case "closemodal": S.modal = null; if (v === "return") { setToast("Welcome back. List refreshed."); } break;
+        case "undo": S.toast.undo(); break;
+        case "retry": { const r = S.toast.retry; S.toast = null; r(); return; }
+        case "refresh": refresh(); return;
+        case "newmail":
+            S.pending.forEach((e) => { e.id = S.emails.length + 1; S.emails.push(e); });
+            S.pending = []; S.lastSync = 0; break;
+        case "addacct": S.ob = { step: "pre", provider: v, returnTo: "app" }; break;
+        case "reconnect": S.ob = { step: "oauth", provider: v, returnTo: "reauth" }; break;
+        case "removeacct":
+            S.modal = {
+                type: "confirm", title: "Remove " + ACCT[v].name + "?", text: "Its stored data in Geronimo is deleted. Your mail in " + ACCT[v].name + " is not touched.",
+                ok: "Remove account", danger: true,
+                run: () => { S.connected = S.connected.filter((x) => x !== v); setToast(ACCT[v].name + " removed and its data deleted."); render(); }
+            };
+            break;
+        case "confirm": {
+            const del = v === "deldata";
+            S.modal = {
+                type: "confirm", title: del ? "Delete all your data?" : "Delete your Geronimo account?",
+                text: del ? "All stored email metadata is erased. Accounts stay connected and will re-sync." : "Disconnects all accounts and erases everything we hold. Your mail stays in Gmail and Outlook.",
+                ok: del ? "Delete my data" : "Delete my account", danger: true,
+                run: () => { if (del) { setToast("All stored data deleted. Re-sync starting."); } else { resetFirstRun(); } render(); }
+            };
+            break;
+        }
+    }
+    render();
+}
+
+resetAll();
+render();
+setInterval(() => { if (!S.ob) { S.lastSync++; } }, 60000);
+</script>
+</body>
+</html>
