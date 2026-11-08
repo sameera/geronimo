@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"net/url"
 	"os"
+	"slices"
 	"strings"
 	"time"
 )
@@ -49,7 +50,8 @@ func Load(getenv func(string) string) (Config, error) {
 		}
 	}
 	if len(missing) > 0 {
-		return Config{}, fmt.Errorf("missing environment variables: %s", strings.Join(sorted(missing), ", "))
+		slices.Sort(missing)
+		return Config{}, fmt.Errorf("missing environment variables: %s", strings.Join(missing, ", "))
 	}
 	u, err := url.Parse(c.BaseURL)
 	if err != nil || u.Host == "" || (u.Scheme != "https" && u.Scheme != "http") {
@@ -59,10 +61,16 @@ func Load(getenv func(string) string) (Config, error) {
 		if c.IdleLifetime, err = time.ParseDuration(v); err != nil {
 			return Config{}, fmt.Errorf("GERONIMO_SESSION_IDLE: %w", err)
 		}
+		if c.IdleLifetime <= 0 {
+			return Config{}, errors.New("GERONIMO_SESSION_IDLE must be positive")
+		}
 	}
 	if v := getenv("GERONIMO_SESSION_ABSOLUTE"); v != "" {
 		if c.AbsoluteLifetime, err = time.ParseDuration(v); err != nil {
 			return Config{}, fmt.Errorf("GERONIMO_SESSION_ABSOLUTE: %w", err)
+		}
+		if c.AbsoluteLifetime <= 0 {
+			return Config{}, errors.New("GERONIMO_SESSION_ABSOLUTE must be positive")
 		}
 	}
 	return c, nil
@@ -79,13 +87,4 @@ func valueOr(v, def string) string {
 		return def
 	}
 	return v
-}
-
-func sorted(s []string) []string {
-	for i := 1; i < len(s); i++ {
-		for j := i; j > 0 && s[j] < s[j-1]; j-- {
-			s[j], s[j-1] = s[j-1], s[j]
-		}
-	}
-	return s
 }

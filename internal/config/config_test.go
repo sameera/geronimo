@@ -47,3 +47,19 @@ func TestLoadRefusesBadBaseURL(t *testing.T) {
 		t.Fatal("bad URL accepted")
 	}
 }
+
+func TestLoadRefusesNonPositiveLifetimes(t *testing.T) {
+	for _, name := range []string{"GERONIMO_SESSION_IDLE", "GERONIMO_SESSION_ABSOLUTE"} {
+		for _, v := range []string{"0", "-1h"} {
+			_, err := config.Load(env(map[string]string{
+				"GERONIMO_BASE_URL":             "https://geronimo.example.ts.net",
+				"GERONIMO_GOOGLE_CLIENT_ID":     "id",
+				"GERONIMO_GOOGLE_CLIENT_SECRET": "secret",
+				name:                            v,
+			}))
+			if err == nil || !strings.Contains(err.Error(), name) {
+				t.Fatalf("%s=%s: err = %v", name, v, err)
+			}
+		}
+	}
+}
