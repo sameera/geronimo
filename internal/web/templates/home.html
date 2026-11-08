@@ -1,6 +1,16 @@
 {{template "head" .}}
     <h1>Geronimo</h1>
     <p>Signed in as {{.Name}} ({{.Email}}).</p>
+    {{if .HasNotice}}<p role="status" class="message">{{.Notice.Text}}{{if .Notice.Retry}} <a id="retry" class="button" href="/">Try again</a>{{end}}</p>{{end}}
+    {{if .Mailboxes}}
+    <section id="mailboxes">
+        <h2>Your Gmail accounts</h2>
+        <ul>
+            {{range .Mailboxes}}<li>{{.Email}}: Connected</li>
+            {{end}}
+        </ul>
+    </section>
+    {{else}}
     <section id="pre-consent">
         <h2>Connect your Gmail</h2>
         <p>Here is what Geronimo does with your mail, and what it never does.</p>
@@ -13,5 +23,6 @@
         <p>Google asks for your consent next. You can remove Geronimo's access in your Google account at any time.</p>
         <form id="connect-gmail" method="post" action="/connect/google/start"><button type="submit">Connect Gmail</button></form>
     </section>
+    {{end}}
     <form method="post" action="/signout"><button type="submit">Sign out</button></form>
 {{template "foot" .}}

@@ -24,10 +24,12 @@ type fakeIDP struct {
 	key      *rsa.PrivateKey
 	otherKey *rsa.PrivateKey
 
-	mu       sync.Mutex
-	claims   map[string]any // overrides merged over the valid claims
-	signWith *rsa.PrivateKey
-	tokenReq url.Values
+	mu        sync.Mutex
+	claims    map[string]any // overrides merged over the valid claims
+	signWith  *rsa.PrivateKey
+	tokenReq  url.Values
+	scope     string // granted scopes reported with the token; empty omits the field
+	noRefresh bool
 }
 
 func newFakeIDP(t *testing.T) *fakeIDP {
@@ -69,10 +71,17 @@ func newFakeIDP(t *testing.T) *fakeIDP {
 		obj, _ := signer.Sign(payload)
 		raw, _ := obj.CompactSerialize()
 		w.Header().Set("Content-Type", "application/json")
-		_ = json.NewEncoder(w).Encode(map[string]any{
+		resp := map[string]any{
 			"access_token": "access-secret", "refresh_token": "refresh-secret",
 			"token_type": "Bearer", "expires_in": 3600, "id_token": raw,
-		})
+		}
+		if f.scope != "" {
+			resp["scope"] = f.scope
+		}
+		if f.noRefresh {
+			delete(resp, "refresh_token")
+		}
+		_ = json.NewEncoder(w).Encode(resp)
 	})
 	f.srv = httptest.NewServer(mux)
 	t.Cleanup(f.srv.Close)

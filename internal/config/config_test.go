@@ -8,6 +8,9 @@ import (
 	"github.com/sameera/geronimo/internal/config"
 )
 
+// testKey is 32 zero bytes, base64 encoded.
+const testKey = "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA="
+
 func env(m map[string]string) func(string) string {
 	return func(k string) string { return m[k] }
 }
@@ -17,6 +20,7 @@ func TestLoadReadsSecretsFromEnvironment(t *testing.T) { // G24
 		"GERONIMO_BASE_URL":             "https://geronimo.example.ts.net/",
 		"GERONIMO_GOOGLE_CLIENT_ID":     "id",
 		"GERONIMO_GOOGLE_CLIENT_SECRET": "secret",
+		"GERONIMO_TOKEN_KEY":            testKey,
 	}))
 	if err != nil {
 		t.Fatal(err)
@@ -42,6 +46,7 @@ func TestLoadRefusesMissingSettings(t *testing.T) {
 func TestLoadRefusesBadBaseURL(t *testing.T) {
 	_, err := config.Load(env(map[string]string{
 		"GERONIMO_BASE_URL": "not a url", "GERONIMO_GOOGLE_CLIENT_ID": "a", "GERONIMO_GOOGLE_CLIENT_SECRET": "b",
+		"GERONIMO_TOKEN_KEY": testKey,
 	}))
 	if err == nil {
 		t.Fatal("bad URL accepted")
@@ -55,11 +60,59 @@ func TestLoadRefusesNonPositiveLifetimes(t *testing.T) {
 				"GERONIMO_BASE_URL":             "https://geronimo.example.ts.net",
 				"GERONIMO_GOOGLE_CLIENT_ID":     "id",
 				"GERONIMO_GOOGLE_CLIENT_SECRET": "secret",
+				"GERONIMO_TOKEN_KEY":            testKey,
 				name:                            v,
 			}))
 			if err == nil || !strings.Contains(err.Error(), name) {
 				t.Fatalf("%s=%s: err = %v", name, v, err)
 			}
+		}
+	}
+}
+
+func base() map[string]string {
+	return map[string]string{
+		"GERONIMO_BASE_URL":             "https://geronimo.example.ts.net",
+		"GERONIMO_GOOGLE_CLIENT_ID":     "id",
+		"GERONIMO_GOOGLE_CLIENT_SECRET": "secret",
+		"GERONIMO_TOKEN_KEY":            testKey,
+	}
+}
+
+func TestLoadReadsTokenKeyAndConnectRedirect(t *testing.T) { // D6, D2
+	c, err := config.Load(env(base()))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(c.TokenKey) != 32 {
+		t.Fatalf("token key length = %d", len(c.TokenKey))
+	}
+	if c.ConnectRedirectURL() != "https://geronimo.example.ts.net/connect/google/callback" {
+		t.Fatalf("connect redirect = %q", c.ConnectRedirectURL())
+	}
+	if c.RedirectURL() != "https://geronimo.example.ts.net/auth/google/callback" {
+		t.Fatalf("sign-in redirect changed: %q", c.RedirectURL())
+	}
+}
+
+func TestLoadRefusesMissingOrInvalidTokenKey(t *testing.T) { // G16
+	for name, v := range map[string]string{
+		"missing":   "",
+		"not b64":   "%%%",
+		"too short": "c2hvcnQ=",
+	} {
+		m := base()
+		m["GERONIMO_TOKEN_KEY"] = v
+		_, err := config.Load(env(m))
+		if err == nil {
+			t.Errorf("%s: accepted", name)
+			continue
+		}
+		if !strings.Contains(err.Error(), "GERONIMO_TOKEN_KEY") {
+			t.Errorf("%s: error does not name the variable: %v", name, err)
+		}
+		if v != "" && strings.Contains(err.Error(), v) {
+			t.Errorf("%s: error echoes the key", name)
 		}
 	}
 }
