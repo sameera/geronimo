@@ -78,7 +78,7 @@ func TestSaveMailboxRefusesWithoutKey(t *testing.T) { // G16
 	}
 	defer st2.Close()
 	id, _ := st2.UpsertAccount(context.Background(), "google", store.Claims{Subject: "x", Email: "x@e", Name: "x"})
-	if err := st2.SaveMailbox(context.Background(), id, gmailBox); err == nil {
+	if _, err := st2.SaveMailbox(context.Background(), id, gmailBox); err == nil {
 		t.Fatal("saved a token with no key set")
 	}
 }
@@ -86,7 +86,7 @@ func TestSaveMailboxRefusesWithoutKey(t *testing.T) { // G16
 func TestRefreshTokenIsStoredOnlyEncrypted(t *testing.T) { // G14
 	f := newFixture(t)
 	acct := f.account(t, "alice")
-	if err := f.st.SaveMailbox(context.Background(), acct, gmailBox); err != nil {
+	if _, err := f.st.SaveMailbox(context.Background(), acct, gmailBox); err != nil {
 		t.Fatal(err)
 	}
 	if bytes.Contains(f.dbBytes(t), []byte("refresh-token-plaintext")) {
@@ -101,7 +101,7 @@ func TestRefreshTokenIsStoredOnlyEncrypted(t *testing.T) { // G14
 func TestDatabaseCopyWithoutKeyExposesNoToken(t *testing.T) { // G14
 	f := newFixture(t)
 	acct := f.account(t, "alice")
-	if err := f.st.SaveMailbox(context.Background(), acct, gmailBox); err != nil {
+	if _, err := f.st.SaveMailbox(context.Background(), acct, gmailBox); err != nil {
 		t.Fatal(err)
 	}
 	other := make([]byte, 32)
@@ -120,7 +120,7 @@ func TestMailboxesListEmailAndStatus(t *testing.T) { // D10
 	if got, _ := f.st.Mailboxes(context.Background(), acct); len(got) != 0 {
 		t.Fatalf("mailboxes before connect = %v", got)
 	}
-	if err := f.st.SaveMailbox(context.Background(), acct, gmailBox); err != nil {
+	if _, err := f.st.SaveMailbox(context.Background(), acct, gmailBox); err != nil {
 		t.Fatal(err)
 	}
 	got, err := f.st.Mailboxes(context.Background(), acct)
@@ -195,5 +195,70 @@ func TestPurgeRemovesExpiredConnectAttempts(t *testing.T) {
 	n, err := f.st.CountConnectAttempts(ctx)
 	if err != nil || n != 0 {
 		t.Fatalf("connect attempts after purge = %d, %v", n, err)
+	}
+}
+
+func TestSaveMailboxTwiceReplacesInPlace(t *testing.T) { // G11, D5
+	f := newFixture(t)
+	ctx := context.Background()
+	acct := f.account(t, "alice")
+	out, err := f.st.SaveMailbox(ctx, acct, gmailBox)
+	if err != nil || out != store.Added {
+		t.Fatalf("first save = %v, %v", out, err)
+	}
+	again := gmailBox
+	again.Email = "renamed@example.com"
+	again.RefreshToken = "second-refresh-token"
+	again.Scopes = []string{"openid", "email"}
+	out, err = f.st.SaveMailbox(ctx, acct, again)
+	if err != nil || out != store.Replaced {
+		t.Fatalf("second save = %v, %v", out, err)
+	}
+	got, _ := f.st.Mailboxes(ctx, acct)
+	if len(got) != 1 || got[0].Email != "renamed@example.com" || got[0].Status != store.StatusConnected {
+		t.Fatalf("mailboxes = %+v", got)
+	}
+	tok, err := f.st.RefreshToken(ctx, acct, gmailBox.Subject)
+	if err != nil || tok != "second-refresh-token" {
+		t.Fatalf("token = %q, %v", tok, err)
+	}
+	if bytes.Contains(f.dbBytes(t), []byte("second-refresh-token")) {
+		t.Error("replacement token stored in plain text")
+	}
+}
+
+func TestSameMailboxUnderTwoAccountsKeepsEachGrant(t *testing.T) { // D5
+	f := newFixture(t)
+	ctx := context.Background()
+	a, b := f.account(t, "alice"), f.account(t, "bob")
+	one, two := gmailBox, gmailBox
+	one.RefreshToken, two.RefreshToken = "alice-token", "bob-token"
+	if _, err := f.st.SaveMailbox(ctx, a, one); err != nil {
+		t.Fatal(err)
+	}
+	if out, err := f.st.SaveMailbox(ctx, b, two); err != nil || out != store.Added {
+		t.Fatalf("bob's save = %v, %v", out, err)
+	}
+	ta, _ := f.st.RefreshToken(ctx, a, gmailBox.Subject)
+	tb, _ := f.st.RefreshToken(ctx, b, gmailBox.Subject)
+	if ta != "alice-token" || tb != "bob-token" {
+		t.Fatalf("tokens = %q %q", ta, tb)
+	}
+}
+
+func TestDifferentSubjectsAreDifferentMailboxes(t *testing.T) { // G13
+	f := newFixture(t)
+	ctx := context.Background()
+	acct := f.account(t, "alice")
+	second := gmailBox
+	second.Subject, second.Email = "g-sub-2", "second@example.com"
+	for _, m := range []store.Mailbox{gmailBox, second} {
+		if _, err := f.st.SaveMailbox(ctx, acct, m); err != nil {
+			t.Fatal(err)
+		}
+	}
+	got, _ := f.st.Mailboxes(ctx, acct)
+	if len(got) != 2 {
+		t.Fatalf("mailboxes = %+v", got)
 	}
 }

@@ -19,8 +19,6 @@ const (
 var (
 	// ErrNoTokenKey means no token key was set, so no token can be stored or read.
 	ErrNoTokenKey = errors.New("no token key set")
-	// ErrMailboxExists means the Gmail account is already connected for this user.
-	ErrMailboxExists = errors.New("mailbox already connected")
 	// ErrUndecryptable means a stored token cannot be opened with the current key.
 	ErrUndecryptable = errors.New("stored token cannot be decrypted")
 	// ErrNoMailbox means no such connected mailbox exists.
@@ -55,24 +53,54 @@ func binding(accountID int64, subject string) []byte {
 	return []byte(fmt.Sprintf("mailbox:%d:%s", accountID, subject))
 }
 
-// SaveMailbox links a Gmail account to a Geronimo account. The refresh token is
-// stored only encrypted. A Gmail account that is already linked gives ErrMailboxExists.
-func (s *Store) SaveMailbox(ctx context.Context, accountID int64, m Mailbox) error {
+// SaveOutcome says what SaveMailbox did.
+type SaveOutcome int
+
+const (
+	// Added means the Gmail account was not connected before.
+	Added SaveOutcome = iota + 1
+	// Replaced means the Gmail account was already connected and its token was replaced.
+	Replaced
+)
+
+// SaveMailbox links a Gmail account to a Geronimo account, keyed by (account, Google
+// subject). A repeat connect adds no row: it replaces the stored token, scopes and
+// email, and sets the status to connected (decision D5). The old token is never
+// revoked. The refresh token is stored only encrypted.
+func (s *Store) SaveMailbox(ctx context.Context, accountID int64, m Mailbox) (SaveOutcome, error) {
 	if s.tokenKey == nil {
-		return ErrNoTokenKey
+		return 0, ErrNoTokenKey
 	}
 	enc, err := secretbox.Seal(s.tokenKey, binding(accountID, m.Subject), []byte(m.RefreshToken))
 	if err != nil {
-		return err
+		return 0, err
 	}
-	_, err = s.db.ExecContext(ctx,
-		`INSERT INTO mailboxes (account_id, google_subject, email, refresh_token_enc, scopes, status, last_checked_at)
-		 VALUES (?, ?, ?, ?, ?, ?, ?)`,
-		accountID, m.Subject, m.Email, enc, strings.Join(m.Scopes, " "), StatusConnected, s.now().Unix())
-	if err != nil && strings.Contains(err.Error(), "UNIQUE") {
-		return ErrMailboxExists
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return 0, err
 	}
-	return err
+	defer tx.Rollback()
+	var id int64
+	err = tx.QueryRowContext(ctx,
+		`SELECT id FROM mailboxes WHERE account_id = ? AND google_subject = ?`, accountID, m.Subject).Scan(&id)
+	outcome := Replaced
+	switch {
+	case err == nil:
+		_, err = tx.ExecContext(ctx,
+			`UPDATE mailboxes SET email = ?, refresh_token_enc = ?, scopes = ?, status = ?, last_checked_at = ? WHERE id = ?`,
+			m.Email, enc, strings.Join(m.Scopes, " "), StatusConnected, s.now().Unix(), id)
+	case errors.Is(err, sql.ErrNoRows):
+		outcome = Added
+		// UNIQUE (account_id, google_subject) rejects a racing duplicate.
+		_, err = tx.ExecContext(ctx,
+			`INSERT INTO mailboxes (account_id, google_subject, email, refresh_token_enc, scopes, status, last_checked_at)
+			 VALUES (?, ?, ?, ?, ?, ?, ?)`,
+			accountID, m.Subject, m.Email, enc, strings.Join(m.Scopes, " "), StatusConnected, s.now().Unix())
+	}
+	if err != nil {
+		return 0, err
+	}
+	return outcome, tx.Commit()
 }
 
 // Mailboxes lists an account's connected mailboxes, oldest first.

@@ -22,6 +22,7 @@ const (
 	keyDenied  = "connect_denied"
 	keyFailed  = "connect_failed"
 	keyPartial = "connect_partial"
+	keyAlready = "connect_already"
 )
 
 // Profiler makes the Gmail profile request through the Gmail access point.
@@ -40,6 +41,8 @@ func homeMessageFor(key string) (homeMessage, bool) {
 		return homeMessage{"Gmail was not connected. You can try again.", true}, true
 	case keyFailed:
 		return homeMessage{"Gmail wasn't connected, please try again.", true}, true
+	case keyAlready:
+		return homeMessage{"That Gmail account is already connected.", false}, true
 	case keyPartial:
 		return homeMessage{"Gmail wasn't connected. Geronimo needs permission to read and manage your mail, and that permission wasn't granted. Please try again.", true}, true
 	}
@@ -179,14 +182,19 @@ func (s *Service) connectCallback(w http.ResponseWriter, r *http.Request) {
 		s.connectFail(w, r, keyFailed)
 		return
 	}
-	if err := s.Store.SaveMailbox(r.Context(), sess.Account.ID, store.Mailbox{
+	outcome, err := s.Store.SaveMailbox(r.Context(), sess.Account.ID, store.Mailbox{
 		Subject: grant.Subject, Email: grant.Email, RefreshToken: grant.RefreshToken, Scopes: grant.Scopes,
-	}); err != nil {
+	})
+	if err != nil {
 		s.Logger.Error("connect failed", "stage", "store", "err", err)
 		s.connectFail(w, r, keyFailed)
 		return
 	}
 	s.clearCookie(w, connectCookie)
 	w.Header().Set("Cache-Control", "no-store")
+	if outcome == store.Replaced {
+		http.Redirect(w, r, "/?msg="+keyAlready, http.StatusSeeOther)
+		return
+	}
 	http.Redirect(w, r, "/", http.StatusSeeOther)
 }

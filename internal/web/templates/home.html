@@ -9,6 +9,7 @@
             {{range .Mailboxes}}<li>{{.Email}}: Connected</li>
             {{end}}
         </ul>
+        <form id="connect-another" method="post" action="/connect/google/start"><button type="submit">Connect another Gmail account</button></form>
     </section>
     {{else}}
     <section id="pre-consent">
