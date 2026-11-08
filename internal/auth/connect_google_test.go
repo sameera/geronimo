@@ -2,6 +2,7 @@ package auth_test
 
 import (
 	"context"
+	"errors"
 	"net/url"
 	"slices"
 	"strings"
@@ -120,6 +121,65 @@ func TestConnectExchange(t *testing.T) {
 		f.signWith = f.otherKey
 		_, err := f.connector().Exchange(ctx, "code", verifier, "n1")
 		if err == nil || strings.Contains(err.Error(), "access-secret") || strings.Contains(err.Error(), "refresh-secret") {
+			t.Fatalf("err = %v", err)
+		}
+	})
+}
+
+func TestConnectorCheck(t *testing.T) { // G18, D8
+	ctx := context.Background()
+	t.Run("a working token passes", func(t *testing.T) {
+		f := newFakeIDP(t)
+		f.refreshScope = "openid " + gmail.ModifyScope
+		if err := f.connector().Check(ctx, "refresh-secret"); err != nil {
+			t.Fatal(err)
+		}
+		if f.tokenReq.Get("grant_type") != "refresh_token" || f.tokenReq.Get("refresh_token") != "refresh-secret" {
+			t.Errorf("token request = %v", f.tokenReq)
+		}
+	})
+	t.Run("a refresh that reports no scope list passes", func(t *testing.T) {
+		f := newFakeIDP(t)
+		if err := f.connector().Check(ctx, "refresh-secret"); err != nil {
+			t.Fatal(err)
+		}
+	})
+	t.Run("invalid_grant means access was removed", func(t *testing.T) {
+		f := newFakeIDP(t)
+		f.refreshStatus, f.refreshBody = 400, `{"error":"invalid_grant","error_description":"Token has been expired or revoked."}`
+		if err := f.connector().Check(ctx, "refresh-secret"); !errors.Is(err, auth.ErrAccessRemoved) {
+			t.Fatalf("err = %v", err)
+		}
+	})
+	t.Run("a lost Gmail scope means access was removed", func(t *testing.T) {
+		f := newFakeIDP(t)
+		f.refreshScope = "openid email"
+		if err := f.connector().Check(ctx, "refresh-secret"); !errors.Is(err, auth.ErrAccessRemoved) {
+			t.Fatalf("err = %v", err)
+		}
+	})
+	for name, status := range map[string]int{"server error": 500, "bad gateway": 502, "rate limit": 429, "other 400": 400} {
+		t.Run(name+" is not removal", func(t *testing.T) {
+			f := newFakeIDP(t)
+			f.refreshStatus, f.refreshBody = status, `{"error":"temporarily_unavailable"}`
+			err := f.connector().Check(ctx, "refresh-secret")
+			if err == nil || errors.Is(err, auth.ErrAccessRemoved) {
+				t.Fatalf("err = %v", err)
+			}
+			if strings.Contains(err.Error(), "refresh-secret") || strings.Contains(err.Error(), "temporarily_unavailable") && strings.Contains(err.Error(), "{") {
+				t.Errorf("error echoes request or response body: %v", err)
+			}
+		})
+	}
+	t.Run("a network error is not removal", func(t *testing.T) {
+		f := newFakeIDP(t)
+		c := f.connector()
+		if _, err := c.AuthURL("s", "n", verifier); err != nil { // load discovery while the server is up
+			t.Fatal(err)
+		}
+		f.srv.Close()
+		err := c.Check(ctx, "refresh-secret")
+		if err == nil || errors.Is(err, auth.ErrAccessRemoved) {
 			t.Fatalf("err = %v", err)
 		}
 	})

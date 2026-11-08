@@ -31,10 +31,14 @@ const (
 
 // Options configure the service.
 type Options struct {
-	Store            *store.Store
-	Provider         Provider
-	Connector        Connector
-	Profiler         Profiler
+	Store     *store.Store
+	Provider  Provider
+	Connector Connector
+	Profiler  Profiler
+	Checker   Checker
+	// CheckInterval and CheckTimeout default to 15 minutes and 3 seconds.
+	CheckInterval    time.Duration
+	CheckTimeout     time.Duration
 	Logger           *slog.Logger
 	BaseURL          string
 	IdleLifetime     time.Duration
@@ -91,6 +95,7 @@ func (s *Service) Handler(app http.Handler) http.Handler {
 	mux.HandleFunc("GET /auth/google/callback", s.callback)
 	mux.HandleFunc("POST /signout", s.signOut)
 	mux.HandleFunc("GET /{$}", s.home)
+	mux.HandleFunc("GET /connect", s.preConsent)
 	mux.HandleFunc("POST /connect/google/start", s.connectStart)
 	mux.HandleFunc("GET /connect/google/callback", s.connectCallback)
 	mux.Handle("/", app)

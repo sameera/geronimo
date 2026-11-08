@@ -1,12 +1,12 @@
 {{template "head" .}}
     <h1>Geronimo</h1>
     <p>Signed in as {{.Name}} ({{.Email}}).</p>
-    {{if .HasNotice}}<p role="status" class="message">{{.Notice.Text}}{{if .Notice.Retry}} <a id="retry" class="button" href="/">Try again</a>{{end}}</p>{{end}}
-    {{if .Mailboxes}}
+    {{if .HasNotice}}<p role="status" class="message">{{.Notice.Text}}{{if .Notice.Retry}} <a id="retry" class="button" href="/connect">Try again</a>{{end}}</p>{{end}}
+    {{if and .Mailboxes (not .ShowConnect)}}
     <section id="mailboxes">
         <h2>Your Gmail accounts</h2>
         <ul>
-            {{range .Mailboxes}}<li>{{.Email}}: Connected</li>
+            {{range .Mailboxes}}{{if .AccessRemoved}}<li>{{.Email}}: Access was removed. <a class="button reconnect" href="/connect">Reconnect</a></li>{{else}}<li>{{.Email}}: Connected</li>{{end}}
             {{end}}
         </ul>
         <form id="connect-another" method="post" action="/connect/google/start"><button type="submit">Connect another Gmail account</button></form>

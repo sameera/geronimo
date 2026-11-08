@@ -24,12 +24,15 @@ type fakeIDP struct {
 	key      *rsa.PrivateKey
 	otherKey *rsa.PrivateKey
 
-	mu        sync.Mutex
-	claims    map[string]any // overrides merged over the valid claims
-	signWith  *rsa.PrivateKey
-	tokenReq  url.Values
-	scope     string // granted scopes reported with the token; empty omits the field
-	noRefresh bool
+	mu            sync.Mutex
+	claims        map[string]any // overrides merged over the valid claims
+	signWith      *rsa.PrivateKey
+	tokenReq      url.Values
+	scope         string // granted scopes reported with the token; empty omits the field
+	noRefresh     bool
+	refreshStatus int // when set, refresh-token requests answer with this status
+	refreshBody   string
+	refreshScope  string // scope reported on a successful refresh
 }
 
 func newFakeIDP(t *testing.T) *fakeIDP {
@@ -57,6 +60,20 @@ func newFakeIDP(t *testing.T) *fakeIDP {
 		f.mu.Lock()
 		defer f.mu.Unlock()
 		f.tokenReq = r.PostForm
+		if r.PostForm.Get("grant_type") == "refresh_token" {
+			w.Header().Set("Content-Type", "application/json")
+			if f.refreshStatus != 0 {
+				w.WriteHeader(f.refreshStatus)
+				_, _ = w.Write([]byte(f.refreshBody))
+				return
+			}
+			resp := map[string]any{"access_token": "fresh-access", "token_type": "Bearer", "expires_in": 3600}
+			if f.refreshScope != "" {
+				resp["scope"] = f.refreshScope
+			}
+			_ = json.NewEncoder(w).Encode(resp)
+			return
+		}
 		c := map[string]any{
 			"iss": f.srv.URL, "aud": "client-id", "sub": "sub-1", "nonce": "n1",
 			"email": "a@example.com", "name": "A",

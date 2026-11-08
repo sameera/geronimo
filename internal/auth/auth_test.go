@@ -64,6 +64,7 @@ type env struct {
 	prov   *fakeProvider
 	conn   *fakeConnector
 	gm     *fakeGmail
+	chk    *fakeChecker
 	srv    *httptest.Server
 	client *http.Client
 	logs   *bytes.Buffer
@@ -94,6 +95,7 @@ func newEnv(t *testing.T) *env {
 		prov:   &fakeProvider{claims: map[string]store.Claims{}, fail: map[string]error{}},
 		conn:   newFakeConnector(),
 		gm:     &fakeGmail{},
+		chk:    &fakeChecker{results: map[string]error{}},
 	}
 	e.open()
 	t.Cleanup(func() { e.srv.Close(); e.st.Close() })
@@ -115,6 +117,7 @@ func (e *env) open() {
 		Provider:         e.prov,
 		Connector:        e.conn,
 		Profiler:         e.gm,
+		Checker:          e.chk,
 		Logger:           slog.New(slog.NewTextHandler(e.logs, nil)),
 		IdleLifetime:     idle,
 		AbsoluteLifetime: absolute,

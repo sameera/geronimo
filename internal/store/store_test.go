@@ -262,3 +262,52 @@ func TestDifferentSubjectsAreDifferentMailboxes(t *testing.T) { // G13
 		t.Fatalf("mailboxes = %+v", got)
 	}
 }
+
+func TestAccessRemovedStatusAndReconnect(t *testing.T) { // G18, D5
+	f := newFixture(t)
+	ctx := context.Background()
+	acct := f.account(t, "alice")
+	_, _ = f.st.SaveMailbox(ctx, acct, gmailBox)
+	if err := f.st.MarkAccessRemoved(ctx, acct, gmailBox.Subject); err != nil {
+		t.Fatal(err)
+	}
+	got, _ := f.st.Mailboxes(ctx, acct)
+	if got[0].Status != store.StatusRemoved {
+		t.Fatalf("status = %q", got[0].Status)
+	}
+	out, err := f.st.SaveMailbox(ctx, acct, gmailBox)
+	if err != nil || out != store.Reconnected {
+		t.Fatalf("save after removal = %v, %v", out, err)
+	}
+	got, _ = f.st.Mailboxes(ctx, acct)
+	if got[0].Status != store.StatusConnected {
+		t.Fatalf("status after reconnect = %q", got[0].Status)
+	}
+}
+
+func TestClaimDueChecksIsAtomicAndHonoursInterval(t *testing.T) { // D8
+	f := newFixture(t)
+	ctx := context.Background()
+	acct := f.account(t, "alice")
+	_, _ = f.st.SaveMailbox(ctx, acct, gmailBox)
+	removed := gmailBox
+	removed.Subject = "g-sub-2"
+	_, _ = f.st.SaveMailbox(ctx, acct, removed)
+	_ = f.st.MarkAccessRemoved(ctx, acct, "g-sub-2")
+
+	if got, _ := f.st.ClaimDueChecks(ctx, acct, 15*time.Minute); len(got) != 0 {
+		t.Fatalf("claimed before the interval: %v", got)
+	}
+	f.now = f.now.Add(16 * time.Minute)
+	got, err := f.st.ClaimDueChecks(ctx, acct, 15*time.Minute)
+	if err != nil || len(got) != 1 || got[0] != gmailBox.Subject {
+		t.Fatalf("claimed = %v, %v (removed mailboxes need no check)", got, err)
+	}
+	if again, _ := f.st.ClaimDueChecks(ctx, acct, 15*time.Minute); len(again) != 0 {
+		t.Fatalf("claimed twice: %v", again)
+	}
+	f.now = f.now.Add(16 * time.Minute)
+	if again, _ := f.st.ClaimDueChecks(ctx, acct, 15*time.Minute); len(again) != 1 {
+		t.Fatalf("not claimed after the next interval: %v", again)
+	}
+}

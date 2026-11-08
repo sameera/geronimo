@@ -14,6 +14,7 @@ import (
 // Mailbox statuses.
 const (
 	StatusConnected = "connected"
+	StatusRemoved   = "access_removed"
 )
 
 var (
@@ -48,6 +49,9 @@ type MailboxInfo struct {
 	Status string
 }
 
+// AccessRemoved reports whether Google no longer honours the mailbox's grant.
+func (m MailboxInfo) AccessRemoved() bool { return m.Status == StatusRemoved }
+
 // binding ties a ciphertext to its record, so it cannot be moved to another row.
 func binding(accountID int64, subject string) []byte {
 	return []byte(fmt.Sprintf("mailbox:%d:%s", accountID, subject))
@@ -61,6 +65,8 @@ const (
 	Added SaveOutcome = iota + 1
 	// Replaced means the Gmail account was already connected and its token was replaced.
 	Replaced
+	// Reconnected means the Gmail account's access had been removed and is restored.
+	Reconnected
 )
 
 // SaveMailbox links a Gmail account to a Geronimo account, keyed by (account, Google
@@ -80,12 +86,18 @@ func (s *Store) SaveMailbox(ctx context.Context, accountID int64, m Mailbox) (Sa
 		return 0, err
 	}
 	defer tx.Rollback()
-	var id int64
+	var (
+		id     int64
+		status string
+	)
 	err = tx.QueryRowContext(ctx,
-		`SELECT id FROM mailboxes WHERE account_id = ? AND google_subject = ?`, accountID, m.Subject).Scan(&id)
+		`SELECT id, status FROM mailboxes WHERE account_id = ? AND google_subject = ?`, accountID, m.Subject).Scan(&id, &status)
 	outcome := Replaced
 	switch {
 	case err == nil:
+		if status == StatusRemoved {
+			outcome = Reconnected
+		}
 		_, err = tx.ExecContext(ctx,
 			`UPDATE mailboxes SET email = ?, refresh_token_enc = ?, scopes = ?, status = ?, last_checked_at = ? WHERE id = ?`,
 			m.Email, enc, strings.Join(m.Scopes, " "), StatusConnected, s.now().Unix(), id)
@@ -192,4 +204,52 @@ func (s *Store) CountConnectAttempts(ctx context.Context) (int, error) {
 	var n int
 	err := s.db.QueryRowContext(ctx, `SELECT COUNT(*) FROM connect_attempts`).Scan(&n)
 	return n, err
+}
+
+// MarkAccessRemoved records that Google no longer honours the mailbox's grant.
+func (s *Store) MarkAccessRemoved(ctx context.Context, accountID int64, subject string) error {
+	_, err := s.db.ExecContext(ctx,
+		`UPDATE mailboxes SET status = ? WHERE account_id = ? AND google_subject = ?`,
+		StatusRemoved, accountID, subject)
+	return err
+}
+
+// ClaimDueChecks returns the Google subjects of the account's connected mailboxes
+// whose last check is at least interval old, and stamps them as checked now. The
+// claim is one transaction, so two page loads never check the same mailbox twice
+// in an interval (decision D8). Mailboxes with removed access need no check.
+func (s *Store) ClaimDueChecks(ctx context.Context, accountID int64, interval time.Duration) ([]string, error) {
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return nil, err
+	}
+	defer tx.Rollback()
+	now := s.now()
+	rows, err := tx.QueryContext(ctx,
+		`SELECT google_subject FROM mailboxes WHERE account_id = ? AND status = ? AND last_checked_at <= ? ORDER BY id`,
+		accountID, StatusConnected, now.Add(-interval).Unix())
+	if err != nil {
+		return nil, err
+	}
+	var due []string
+	for rows.Next() {
+		var sub string
+		if err := rows.Scan(&sub); err != nil {
+			rows.Close()
+			return nil, err
+		}
+		due = append(due, sub)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	rows.Close()
+	for _, sub := range due {
+		if _, err := tx.ExecContext(ctx,
+			`UPDATE mailboxes SET last_checked_at = ? WHERE account_id = ? AND google_subject = ?`,
+			now.Unix(), accountID, sub); err != nil {
+			return nil, err
+		}
+	}
+	return due, tx.Commit()
 }

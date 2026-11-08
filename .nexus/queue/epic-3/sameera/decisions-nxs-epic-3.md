@@ -22,3 +22,13 @@
 - **Choice:** Build #36 before #35.
 - **Why:** Both depend only on #34, and #35's reconnect uses the replace-in-place path that #36 delivers (D5).
 - **Refuted alternative:** Build #35 first and add its own replace path.
+
+## 2026-11-08 — Retry and reconnect link to a new GET /connect page
+- **Choice:** Retry and reconnect link to `GET /connect`, which always renders the pre-consent screen; home keeps showing the account list for connected users.
+- **Why:** G24 needs the pre-consent screen reachable by a user who already has accounts, and home no longer shows it to them (G26).
+- **Refuted alternative:** Link retry to `/` and show pre-consent there.
+
+## 2026-11-08 — Status check claims the interval before calling Google
+- **Choice:** `ClaimDueChecks` stamps `last_checked_at` in one transaction before the Google call, including when the call fails.
+- **Why:** Two page loads never check one mailbox twice, and an outage costs at most one 3-second wait per interval.
+- **Refuted alternative:** Stamp only on a definitive answer, which would repeat the wait on every open during an outage.

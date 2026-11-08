@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"slices"
 	"strings"
 	"sync"
 
@@ -126,4 +127,37 @@ func (g *GoogleConnect) Exchange(ctx context.Context, code, verifier, nonce stri
 		AccessToken:  tok.AccessToken,
 		Scopes:       strings.Fields(scope),
 	}, nil
+}
+
+// ErrAccessRemoved means Google answered that the grant is gone: an explicit
+// invalid_grant, or a refreshed token that no longer carries the Gmail scope.
+var ErrAccessRemoved = errors.New("access was removed at Google")
+
+// Checker tests that a stored refresh token still works at Google (decision D8).
+type Checker interface {
+	// Check returns ErrAccessRemoved only for Google's explicit answer. Any other
+	// error means "unknown": timeouts, network trouble and server errors.
+	Check(ctx context.Context, refreshToken string) error
+}
+
+// Check refreshes an access token. A refresh is a token-endpoint call, not a Gmail
+// call, so it carries no message-body risk. The new access token is dropped at once.
+func (g *GoogleConnect) Check(ctx context.Context, refreshToken string) error {
+	p, err := g.discover(ctx)
+	if err != nil {
+		return fmt.Errorf("discovery: %w", err)
+	}
+	tok, err := g.oauthConfig(p).TokenSource(ctx, &oauth2.Token{RefreshToken: refreshToken}).Token()
+	if err != nil {
+		var re *oauth2.RetrieveError
+		if errors.As(err, &re) && re.ErrorCode == "invalid_grant" {
+			return ErrAccessRemoved
+		}
+		return fmt.Errorf("refresh: %s", safeErr(err))
+	}
+	// A scope list that no longer has Gmail modify means the user took it back.
+	if scope, _ := tok.Extra("scope").(string); scope != "" && !slices.Contains(strings.Fields(scope), gmail.ModifyScope) {
+		return ErrAccessRemoved
+	}
+	return nil
 }

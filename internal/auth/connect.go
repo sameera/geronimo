@@ -5,6 +5,7 @@ import (
 	"errors"
 	"net/http"
 	"slices"
+	"sync"
 	"time"
 
 	"golang.org/x/oauth2"
@@ -19,10 +20,15 @@ const (
 	connectTTL    = 5 * time.Minute
 
 	// Message keys shown on home. Query text is never echoed (G33).
-	keyDenied  = "connect_denied"
-	keyFailed  = "connect_failed"
-	keyPartial = "connect_partial"
-	keyAlready = "connect_already"
+	keyDenied      = "connect_denied"
+	keyFailed      = "connect_failed"
+	keyPartial     = "connect_partial"
+	keyAlready     = "connect_already"
+	keyReconnected = "connect_reconnected"
+
+	// Status checks on open (decision D8).
+	defaultCheckInterval = 15 * time.Minute
+	defaultCheckTimeout  = 3 * time.Second
 )
 
 // Profiler makes the Gmail profile request through the Gmail access point.
@@ -43,6 +49,8 @@ func homeMessageFor(key string) (homeMessage, bool) {
 		return homeMessage{"Gmail wasn't connected, please try again.", true}, true
 	case keyAlready:
 		return homeMessage{"That Gmail account is already connected.", false}, true
+	case keyReconnected:
+		return homeMessage{"Gmail account reconnected.", false}, true
 	case keyPartial:
 		return homeMessage{"Gmail wasn't connected. Geronimo needs permission to read and manage your mail, and that permission wasn't granted. Please try again.", true}, true
 	}
@@ -54,6 +62,8 @@ type homePage struct {
 	Notice    homeMessage
 	HasNotice bool
 	Mailboxes []store.MailboxInfo
+	// ShowConnect shows the pre-consent screen even when accounts are connected (G24).
+	ShowConnect bool
 }
 
 // home shows the pre-consent screen to a user with no connected Gmail, and the
@@ -64,6 +74,7 @@ func (s *Service) home(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "unauthorized", http.StatusUnauthorized)
 		return
 	}
+	s.checkMailboxes(r.Context(), sess.Account.ID)
 	boxes, err := s.Store.Mailboxes(r.Context(), sess.Account.ID)
 	if err != nil {
 		s.Logger.Error("home: list mailboxes", "err", err)
@@ -76,6 +87,75 @@ func (s *Service) home(w http.ResponseWriter, r *http.Request) {
 	}
 	data.Notice, data.HasNotice = homeMessageFor(r.URL.Query().Get("msg"))
 	web.Render(w, http.StatusOK, "home.html", data)
+}
+
+// preConsent is where retry and reconnect lead (G24). It shows the pre-consent
+// screen whether or not accounts are connected.
+func (s *Service) preConsent(w http.ResponseWriter, r *http.Request) {
+	sess, ok := SessionFrom(r)
+	if !ok {
+		s.refuse(w, r)
+		return
+	}
+	web.Render(w, http.StatusOK, "home.html", homePage{
+		page:        page{SignedIn: true, Name: sess.Account.Name, Email: sess.Account.Email},
+		ShowConnect: true,
+	})
+}
+
+// checkMailboxes tests that each connected mailbox's token still works, at most once
+// per interval per mailbox, and never holds the page past the timeout. Only Google's
+// explicit answer or an unreadable token marks access removed (G18, G22).
+func (s *Service) checkMailboxes(ctx context.Context, accountID int64) {
+	if s.Checker == nil {
+		return
+	}
+	interval, timeout := s.CheckInterval, s.CheckTimeout
+	if interval <= 0 {
+		interval = defaultCheckInterval
+	}
+	if timeout <= 0 {
+		timeout = defaultCheckTimeout
+	}
+	due, err := s.Store.ClaimDueChecks(ctx, accountID, interval)
+	if err != nil {
+		s.Logger.Error("status check: claim", "err", err)
+		return
+	}
+	if len(due) == 0 {
+		return
+	}
+	cctx, cancel := context.WithTimeout(ctx, timeout)
+	defer cancel()
+	var wg sync.WaitGroup
+	for _, subject := range due {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			s.checkOne(cctx, accountID, subject)
+		}()
+	}
+	wg.Wait()
+}
+
+func (s *Service) checkOne(ctx context.Context, accountID int64, subject string) {
+	token, err := s.Store.RefreshToken(ctx, accountID, subject)
+	if err == nil {
+		err = s.Checker.Check(ctx, token)
+		token = ""
+	}
+	switch {
+	case err == nil:
+	case errors.Is(err, ErrAccessRemoved) || errors.Is(err, store.ErrUndecryptable):
+		s.Logger.Info("status check: access removed", "reason", err.Error())
+		// The check's context may be spent, so the write uses its own.
+		if err := s.Store.MarkAccessRemoved(context.WithoutCancel(ctx), accountID, subject); err != nil {
+			s.Logger.Error("status check: mark removed", "err", err)
+		}
+	default:
+		// Unknown outcome: leave the status as it is and let the page render.
+		s.Logger.Warn("status check: no answer", "reason", err.Error())
+	}
 }
 
 func (s *Service) connectFail(w http.ResponseWriter, r *http.Request, key string) {
@@ -192,8 +272,12 @@ func (s *Service) connectCallback(w http.ResponseWriter, r *http.Request) {
 	}
 	s.clearCookie(w, connectCookie)
 	w.Header().Set("Cache-Control", "no-store")
-	if outcome == store.Replaced {
+	switch outcome {
+	case store.Replaced:
 		http.Redirect(w, r, "/?msg="+keyAlready, http.StatusSeeOther)
+		return
+	case store.Reconnected:
+		http.Redirect(w, r, "/?msg="+keyReconnected, http.StatusSeeOther)
 		return
 	}
 	http.Redirect(w, r, "/", http.StatusSeeOther)

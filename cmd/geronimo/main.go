@@ -44,10 +44,12 @@ func run() error {
 		}
 	}()
 
+	connector := auth.NewGoogleConnect(auth.GoogleIssuer, cfg.GoogleClientID, cfg.GoogleClientSecret, cfg.ConnectRedirectURL())
 	svc := auth.New(auth.Options{
 		Store:            st,
 		Provider:         auth.NewGoogle(auth.GoogleIssuer, cfg.GoogleClientID, cfg.GoogleClientSecret, cfg.RedirectURL()),
-		Connector:        auth.NewGoogleConnect(auth.GoogleIssuer, cfg.GoogleClientID, cfg.GoogleClientSecret, cfg.ConnectRedirectURL()),
+		Connector:        connector,
+		Checker:          connector,
 		Profiler:         gmail.New(gmail.DefaultBaseURL, &http.Client{Timeout: 10 * time.Second}),
 		BaseURL:          cfg.BaseURL,
 		IdleLifetime:     cfg.IdleLifetime,
