@@ -85,6 +85,7 @@ func (s *Service) Handler(app http.Handler) http.Handler {
 	mux.HandleFunc("GET /signin", s.signInPage)
 	mux.HandleFunc("GET /auth/google/start", s.start)
 	mux.HandleFunc("GET /auth/google/callback", s.callback)
+	mux.HandleFunc("POST /signout", s.signOut)
 	mux.Handle("/", app)
 	return s.gate(mux)
 }
@@ -305,4 +306,37 @@ func attemptReason(err error) string {
 		return "missing, mismatched, expired or used state"
 	}
 	return "store error"
+}
+
+// sameOrigin reports whether a state-changing request came from Geronimo itself.
+// It trusts Fetch-Metadata when the browser sends it, and falls back to Origin.
+func (s *Service) sameOrigin(r *http.Request) bool {
+	if site := r.Header.Get("Sec-Fetch-Site"); site != "" {
+		return site == "same-origin"
+	}
+	origin := r.Header.Get("Origin")
+	return origin != "" && origin == s.BaseURL
+}
+
+// signOut ends this browser's session on the server (D8). Other browsers keep theirs,
+// and the Google session is untouched. Only a same-origin POST signs out (G20).
+func (s *Service) signOut(w http.ResponseWriter, r *http.Request) {
+	if !s.sameOrigin(r) {
+		s.Logger.Warn("sign-out refused", "reason", "not same-origin")
+		http.Error(w, "forbidden", http.StatusForbidden)
+		return
+	}
+	if c, err := r.Cookie(sessionCookie); err == nil {
+		// Delete before answering, so the old cookie stops working at once (G19).
+		if err := s.Store.DeleteSession(r.Context(), c.Value); err != nil {
+			s.Logger.Error("sign-out failed", "err", err)
+			http.Error(w, "sign-out failed", http.StatusInternalServerError)
+			return
+		}
+	}
+	s.clearCookie(w, sessionCookie)
+	// Defence in depth for the back button. Not every browser honours it, so no guarantee depends on it.
+	w.Header().Set("Clear-Site-Data", `"cache", "storage"`)
+	w.Header().Set("Cache-Control", "no-store")
+	http.Redirect(w, r, "/signin?msg=signed_out", http.StatusSeeOther)
 }

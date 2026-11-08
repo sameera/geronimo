@@ -17,3 +17,8 @@
 - **Choice:** Gate answers an HTMX request with status 200 and `HX-Redirect: /signin`.
 - **Why:** HTMX acts on HX-Redirect for 2xx responses, so the sign-in page is never swapped into a fragment.
 - **Refuted alternative:** 401 with HX-Redirect.
+
+## 2026-11-08 — Origin check prefers Fetch-Metadata, falls back to Origin
+- **Choice:** If `Sec-Fetch-Site` is present it must be `same-origin`; otherwise `Origin` must equal the configured base URL; neither present is refused.
+- **Why:** Matches D8's "Origin or Fetch-Metadata" with no token framework, and fails closed.
+- **Refuted alternative:** A CSRF token in the sign-out form.

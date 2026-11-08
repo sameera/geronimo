@@ -1,4 +1,5 @@
 {{template "head" .}}
     <h1>Geronimo</h1>
     <p>Signed in as {{.Name}} ({{.Email}}).</p>
+    <form method="post" action="/signout"><button type="submit">Sign out</button></form>
 {{template "foot" .}}

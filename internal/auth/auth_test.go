@@ -103,7 +103,7 @@ func (e *env) open() {
 		e.t.Fatal(err)
 	}
 	e.st = st
-	svc := auth.New(auth.Options{
+	svc := auth.New(auth.Options{ // BaseURL is set once the server has an address
 		Store:            st,
 		Provider:         e.prov,
 		Logger:           slog.New(slog.NewTextHandler(e.logs, nil)),
@@ -114,6 +114,7 @@ func (e *env) open() {
 	app.HandleFunc("GET /{$}", auth.Home)
 	app.HandleFunc("GET /secret", func(w http.ResponseWriter, r *http.Request) { _, _ = io.WriteString(w, "secret content") })
 	e.srv = httptest.NewTLSServer(svc.Handler(app))
+	svc.BaseURL = e.srv.URL
 	e.client = e.newBrowser()
 }
 
@@ -560,4 +561,9 @@ func TestPurgeRemovesExpiredRows(t *testing.T) {
 	if len(hashes) != 0 {
 		t.Fatalf("expired session kept: %v", hashes)
 	}
+}
+
+func jarSet(e *env, c *http.Client, name, value string) {
+	u, _ := url.Parse(e.srv.URL)
+	c.Jar.SetCookies(u, []*http.Cookie{{Name: name, Value: value, Path: "/", Secure: true}})
 }
