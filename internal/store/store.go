@@ -16,8 +16,9 @@ import (
 
 // Store wraps the database.
 type Store struct {
-	db  *sql.DB
-	now func() time.Time
+	db       *sql.DB
+	now      func() time.Time
+	tokenKey []byte
 }
 
 // Open opens (and migrates) the database at path. now supplies the clock.
@@ -74,6 +75,27 @@ CREATE TABLE IF NOT EXISTS sign_in_attempts (
 	binding_hash TEXT NOT NULL,
 	expires_at INTEGER NOT NULL,
 	consumed INTEGER NOT NULL DEFAULT 0
+);
+CREATE TABLE IF NOT EXISTS connect_attempts (
+	id INTEGER PRIMARY KEY,
+	state TEXT NOT NULL UNIQUE,
+	nonce TEXT NOT NULL,
+	verifier TEXT NOT NULL,
+	binding_hash TEXT NOT NULL,
+	account_id INTEGER NOT NULL REFERENCES accounts(id) ON DELETE CASCADE,
+	expires_at INTEGER NOT NULL,
+	consumed INTEGER NOT NULL DEFAULT 0
+);
+CREATE TABLE IF NOT EXISTS mailboxes (
+	id INTEGER PRIMARY KEY,
+	account_id INTEGER NOT NULL REFERENCES accounts(id) ON DELETE CASCADE,
+	google_subject TEXT NOT NULL,
+	email TEXT NOT NULL,
+	refresh_token_enc BLOB NOT NULL,
+	scopes TEXT NOT NULL,
+	status TEXT NOT NULL,
+	last_checked_at INTEGER NOT NULL,
+	UNIQUE (account_id, google_subject)
 );
 `
 
@@ -281,6 +303,9 @@ func (s *Store) PurgeExpired(ctx context.Context) error {
 		`DELETE FROM sessions WHERE idle_expires_at <= ? OR abs_expires_at <= ?`, now, now); err != nil {
 		return err
 	}
-	_, err := s.db.ExecContext(ctx, `DELETE FROM sign_in_attempts WHERE expires_at <= ? OR consumed = 1`, now)
+	if _, err := s.db.ExecContext(ctx, `DELETE FROM sign_in_attempts WHERE expires_at <= ? OR consumed = 1`, now); err != nil {
+		return err
+	}
+	_, err := s.db.ExecContext(ctx, `DELETE FROM connect_attempts WHERE expires_at <= ? OR consumed = 1`, now)
 	return err
 }

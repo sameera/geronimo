@@ -9,6 +9,8 @@ import (
 	"slices"
 	"strings"
 	"time"
+
+	"github.com/sameera/geronimo/internal/secretbox"
 )
 
 // Config holds the settings the service needs at startup.
@@ -18,6 +20,7 @@ type Config struct {
 	DBPath             string
 	GoogleClientID     string
 	GoogleClientSecret string
+	TokenKey           []byte
 	IdleLifetime       time.Duration
 	AbsoluteLifetime   time.Duration
 }
@@ -44,6 +47,7 @@ func Load(getenv func(string) string) (Config, error) {
 		"GERONIMO_BASE_URL":             c.BaseURL,
 		"GERONIMO_GOOGLE_CLIENT_ID":     c.GoogleClientID,
 		"GERONIMO_GOOGLE_CLIENT_SECRET": c.GoogleClientSecret,
+		"GERONIMO_TOKEN_KEY":            getenv("GERONIMO_TOKEN_KEY"),
 	} {
 		if v == "" {
 			missing = append(missing, name)
@@ -56,6 +60,10 @@ func Load(getenv func(string) string) (Config, error) {
 	u, err := url.Parse(c.BaseURL)
 	if err != nil || u.Host == "" || (u.Scheme != "https" && u.Scheme != "http") {
 		return Config{}, errors.New("GERONIMO_BASE_URL must be an http(s) URL such as https://example.ts.net")
+	}
+	// The service refuses to start without a valid token key (decision D6).
+	if c.TokenKey, err = secretbox.ParseKey(getenv("GERONIMO_TOKEN_KEY")); err != nil {
+		return Config{}, fmt.Errorf("GERONIMO_TOKEN_KEY: %w (expected base64 of 32 random bytes)", err)
 	}
 	if v := getenv("GERONIMO_SESSION_IDLE"); v != "" {
 		if c.IdleLifetime, err = time.ParseDuration(v); err != nil {
@@ -81,6 +89,9 @@ func FromEnv() (Config, error) { return Load(os.Getenv) }
 
 // RedirectURL is the address Google returns the visitor to.
 func (c Config) RedirectURL() string { return c.BaseURL + "/auth/google/callback" }
+
+// ConnectRedirectURL is the address Google returns the visitor to after Gmail consent.
+func (c Config) ConnectRedirectURL() string { return c.BaseURL + "/connect/google/callback" }
 
 func valueOr(v, def string) string {
 	if v == "" {

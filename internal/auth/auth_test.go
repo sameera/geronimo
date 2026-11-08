@@ -62,6 +62,9 @@ type env struct {
 	t      *testing.T
 	st     *store.Store
 	prov   *fakeProvider
+	conn   *fakeConnector
+	gm     *fakeGmail
+	chk    *fakeChecker
 	srv    *httptest.Server
 	client *http.Client
 	logs   *bytes.Buffer
@@ -90,6 +93,9 @@ func newEnv(t *testing.T) *env {
 		logs:   &bytes.Buffer{},
 		dbPath: filepath.Join(t.TempDir(), "geronimo.db"),
 		prov:   &fakeProvider{claims: map[string]store.Claims{}, fail: map[string]error{}},
+		conn:   newFakeConnector(),
+		gm:     &fakeGmail{},
+		chk:    &fakeChecker{results: map[string]error{}},
 	}
 	e.open()
 	t.Cleanup(func() { e.srv.Close(); e.st.Close() })
@@ -102,16 +108,21 @@ func (e *env) open() {
 	if err != nil {
 		e.t.Fatal(err)
 	}
+	if err := st.SetTokenKey(testTokenKey); err != nil {
+		e.t.Fatal(err)
+	}
 	e.st = st
 	svc := auth.New(auth.Options{ // BaseURL is set once the server has an address
 		Store:            st,
 		Provider:         e.prov,
+		Connector:        e.conn,
+		Profiler:         e.gm,
+		Checker:          e.chk,
 		Logger:           slog.New(slog.NewTextHandler(e.logs, nil)),
 		IdleLifetime:     idle,
 		AbsoluteLifetime: absolute,
 	})
 	app := http.NewServeMux()
-	app.HandleFunc("GET /{$}", auth.Home)
 	app.HandleFunc("GET /secret", func(w http.ResponseWriter, r *http.Request) { _, _ = io.WriteString(w, "secret content") })
 	e.srv = httptest.NewTLSServer(svc.Handler(app))
 	svc.BaseURL = e.srv.URL

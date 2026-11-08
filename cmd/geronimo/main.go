@@ -10,6 +10,7 @@ import (
 
 	"github.com/sameera/geronimo/internal/auth"
 	"github.com/sameera/geronimo/internal/config"
+	"github.com/sameera/geronimo/internal/gmail"
 	"github.com/sameera/geronimo/internal/store"
 )
 
@@ -30,6 +31,9 @@ func run() error {
 		return err
 	}
 	defer st.Close()
+	if err := st.SetTokenKey(cfg.TokenKey); err != nil {
+		return err
+	}
 
 	go func() {
 		for {
@@ -40,15 +44,18 @@ func run() error {
 		}
 	}()
 
+	connector := auth.NewGoogleConnect(auth.GoogleIssuer, cfg.GoogleClientID, cfg.GoogleClientSecret, cfg.ConnectRedirectURL())
 	svc := auth.New(auth.Options{
 		Store:            st,
 		Provider:         auth.NewGoogle(auth.GoogleIssuer, cfg.GoogleClientID, cfg.GoogleClientSecret, cfg.RedirectURL()),
+		Connector:        connector,
+		Checker:          connector,
+		Profiler:         gmail.New(gmail.DefaultBaseURL, &http.Client{Timeout: 10 * time.Second}),
 		BaseURL:          cfg.BaseURL,
 		IdleLifetime:     cfg.IdleLifetime,
 		AbsoluteLifetime: cfg.AbsoluteLifetime,
 	})
 	app := http.NewServeMux()
-	app.HandleFunc("GET /{$}", auth.Home)
 
 	srv := &http.Server{Addr: cfg.Addr, Handler: svc.Handler(app), ReadHeaderTimeout: 10 * time.Second}
 	slog.Info("listening", "addr", cfg.Addr)

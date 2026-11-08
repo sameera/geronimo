@@ -31,8 +31,14 @@ const (
 
 // Options configure the service.
 type Options struct {
-	Store            *store.Store
-	Provider         Provider
+	Store     *store.Store
+	Provider  Provider
+	Connector Connector
+	Profiler  Profiler
+	Checker   Checker
+	// CheckInterval and CheckTimeout default to 15 minutes and 3 seconds.
+	CheckInterval    time.Duration
+	CheckTimeout     time.Duration
 	Logger           *slog.Logger
 	BaseURL          string
 	IdleLifetime     time.Duration
@@ -59,7 +65,9 @@ func New(o Options) *Service {
 			"/signin":               true,
 			"/auth/google/start":    true,
 			"/auth/google/callback": true,
-			"/healthz":              true,
+			// Public so a callback with no session can send the user to sign in (G7).
+			"/connect/google/callback": true,
+			"/healthz":                 true,
 		},
 		publicPrefixes: []string{"/static/"},
 	}
@@ -86,6 +94,10 @@ func (s *Service) Handler(app http.Handler) http.Handler {
 	mux.HandleFunc("GET /auth/google/start", s.start)
 	mux.HandleFunc("GET /auth/google/callback", s.callback)
 	mux.HandleFunc("POST /signout", s.signOut)
+	mux.HandleFunc("GET /{$}", s.home)
+	mux.HandleFunc("GET /connect", s.preConsent)
+	mux.HandleFunc("POST /connect/google/start", s.connectStart)
+	mux.HandleFunc("GET /connect/google/callback", s.connectCallback)
 	mux.Handle("/", app)
 	return s.gate(mux)
 }
@@ -170,16 +182,6 @@ func messageFor(key string) string {
 		return msgSignedOut
 	}
 	return ""
-}
-
-// Home renders the placeholder signed-in page.
-func Home(w http.ResponseWriter, r *http.Request) {
-	sess, ok := SessionFrom(r)
-	if !ok {
-		http.Error(w, "unauthorized", http.StatusUnauthorized)
-		return
-	}
-	web.Render(w, http.StatusOK, "home.html", page{SignedIn: true, Name: sess.Account.Name, Email: sess.Account.Email})
 }
 
 func randomToken() (string, error) {
