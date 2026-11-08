@@ -1,0 +1,6 @@
+{{template "head" .}}
+    <h1>Geronimo</h1>
+    {{if .Message}}<p role="status" class="message">{{.Message}}</p>{{end}}
+    <p><a class="button" href="/auth/google/start">Sign in with Google</a></p>
+    <p class="note">Signing in only tells Geronimo who you are. It does not give access to your mail.</p>
+{{template "foot" .}}
