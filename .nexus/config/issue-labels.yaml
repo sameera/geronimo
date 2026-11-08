@@ -1,0 +1,52 @@
+labels:
+    - name: mail-sync
+      color: "1d76db"
+      purpose: Connecting to Gmail and Outlook and keeping mail in sync
+      use_for:
+          - OAuth sign-in for Google and Microsoft accounts
+          - Gmail API and Microsoft Graph integration
+          - Sync, push notifications, and mailbox actions (archive, delete, mark read)
+
+    - name: views
+      color: "5319e7"
+      purpose: Categorizing email into topic, sender, and urgency views
+      use_for:
+          - Categorization rules and email metadata parsing
+          - View drill-down and bulk actions
+          - Category storage and refresh
+
+    - name: ui
+      color: "c5def5"
+      purpose: Server-rendered pages and HTMX interactions
+      use_for:
+          - Templates and HTMX fragments
+          - Inbox triage flows
+          - Responsive layout
+
+    - name: infrastructure
+      color: "0e8a16"
+      purpose: Build, CI/CD, hosting, and dev environment
+      use_for:
+          - Go toolchain and module setup
+          - CI/CD pipelines
+          - Deployment and configuration
+
+    - name: security
+      color: "b60205"
+      purpose: Token handling, data protection, and provider security reviews
+      use_for:
+          - OAuth token storage and rotation
+          - Email data retention and encryption
+          - Google and Microsoft app verification
+
+    - name: testing
+      color: "fbca04"
+      purpose: Unit, integration, and end-to-end tests
+      use_for:
+          - Test coverage and fixtures
+          - Provider API fakes
+
+usage_guidelines:
+    - Issues can have multiple labels when they span categories.
+    - Choose the label that best represents the primary work area.
+    - Use security or testing as secondary labels when relevant.
