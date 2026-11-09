@@ -1,5 +1,87 @@
-body { font-family: system-ui, sans-serif; margin: 0; }
-main { max-width: 32rem; margin: 3rem auto; padding: 0 1rem; overflow-wrap: anywhere; }
-.button, button { display: inline-block; padding: 0.6rem 1rem; border: 1px solid #333; border-radius: 4px; background: #fff; color: #111; text-decoration: none; font: inherit; cursor: pointer; }
-.message { padding: 0.6rem 0.8rem; background: #f3f3f3; border-left: 4px solid #333; }
-.note { color: #555; font-size: 0.9rem; }
+/* Design tokens. Source of truth: docs/design/design-system.md */
+:root {
+    color-scheme: light dark;
+
+    /* Surfaces and text */
+    --bg: light-dark(#f4f2fb, #0d0b1a);
+    --surface: light-dark(#ffffff, #17142a);
+    --surface-2: light-dark(#f8f6ff, #201c38);
+    --line: light-dark(#e4e0f2, #2e2950);
+    --ink: light-dark(#1a1530, #efedfb);
+    --mute: light-dark(#5f5a78, #a7a2c4);
+
+    /* Brand */
+    --brand: light-dark(#5b3df5, #9f8cff);
+    --brand-ink: light-dark(#ffffff, #12083a);
+    --brand-soft: light-dark(#ece8ff, #2a2156);
+    --brand-soft-ink: light-dark(#4527d6, #c9beff);
+    --hero: linear-gradient(135deg, #5b3df5 0%, #a630e0 55%, #d6246a 100%);
+    --hero-ink: #ffffff;
+
+    /* Status */
+    --good: light-dark(#0b7a45, #4ade80);
+    --good-soft: light-dark(#e3f7ec, #12301f);
+    --warn: light-dark(#a85600, #fbbf24);
+    --warn-soft: light-dark(#fff1db, #33260a);
+    --bad: light-dark(#c42239, #ff6b81);
+    --bad-soft: light-dark(#ffe6e9, #3a1420);
+
+    /* Type */
+    --font: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+    --fs-xs: 12px; --fs-sm: 13px; --fs-md: 15px; --fs-lg: 17px; --fs-xl: 24px;
+
+    /* Spacing, radius */
+    --s-1: 4px; --s-2: 8px; --s-3: 12px; --s-4: 16px; --s-5: 24px;
+    --r-sm: 8px; --r-md: 12px; --r-lg: 16px; --r-pill: 999px;
+
+    /* Elevation, focus, motion */
+    --shadow-c: light-dark(rgb(26 21 48 / .07), rgb(0 0 0 / .45));
+    --shadow-1: 0 1px 2px var(--shadow-c), 0 4px 14px var(--shadow-c);
+    --glow: 0 8px 24px rgb(166 48 224 / .35);
+    --focus: 0 0 0 3px color-mix(in srgb, var(--brand) 45%, transparent);
+    --ease: 150ms ease-out;
+}
+:root[data-theme="light"] { color-scheme: light; }
+:root[data-theme="dark"] { color-scheme: dark; }
+
+* { box-sizing: border-box; }
+body { margin: 0; font: var(--fs-md)/1.45 var(--font); color: var(--ink); background: var(--bg); -webkit-font-smoothing: antialiased; }
+main { max-width: 30rem; min-height: 100vh; margin: 0 auto; padding: 0 0 2rem; overflow-wrap: anywhere; }
+:focus-visible { outline: none; box-shadow: var(--focus); }
+@media (prefers-reduced-motion: reduce) { * { transition: none !important; } }
+
+/* Top bar */
+h1 { position: sticky; top: 0; z-index: 5; margin: 0 0 var(--s-3); padding: 14px; background: color-mix(in srgb, var(--surface) 86%, transparent); backdrop-filter: blur(12px); border-bottom: 1px solid var(--line); font-size: 20px; font-weight: 800; letter-spacing: -.01em; }
+
+/* Layout */
+main > p, main > section, main > form { margin-left: 14px; margin-right: 14px; }
+section { background: var(--surface); border: 1px solid var(--line); border-radius: var(--r-lg); padding: 14px; margin-bottom: var(--s-3); box-shadow: var(--shadow-1); }
+h2 { margin: 0 0 var(--s-2); font-size: var(--fs-xs); font-weight: 700; color: var(--mute); text-transform: uppercase; letter-spacing: .06em; }
+p { margin: var(--s-2) 0; }
+section p { color: var(--mute); }
+ul { margin: var(--s-2) 0; padding-left: 20px; }
+li { margin: var(--s-1) 0; }
+li::marker { color: var(--brand); }
+section ul:has(.reconnect), #mailboxes ul { list-style: none; padding: 0; }
+#mailboxes li { display: flex; align-items: center; flex-wrap: wrap; gap: var(--s-2); padding: 10px 0; border-bottom: 1px solid var(--line); font-weight: 600; }
+#mailboxes li:last-child { border: 0; }
+a { color: var(--brand); font-weight: 600; }
+
+/* Buttons */
+.button, button { display: inline-flex; align-items: center; justify-content: center; min-height: 44px; padding: 0 var(--s-4); border: 1px solid var(--line); border-radius: var(--r-md); background: var(--surface); color: var(--ink); text-decoration: none; font: inherit; font-weight: 650; cursor: pointer; transition: background var(--ease), transform var(--ease), filter var(--ease); }
+.button:hover, button:hover { background: var(--surface-2); }
+.button:active, button:active { transform: scale(.98); }
+section form button, section > form .button, main > p > .button { width: 100%; margin: var(--s-2) 0 0; }
+#connect-gmail button, #connect-another button, main > p > .button:first-child, .reconnect { background: var(--brand); border-color: var(--brand); color: var(--brand-ink); }
+#connect-gmail button:hover, #connect-another button:hover, main > p > .button:first-child:hover, .reconnect:hover { filter: brightness(1.08); }
+#connect-gmail button, main > p:not(.message) > .button:first-child { background: var(--hero); border: 0; color: var(--hero-ink); box-shadow: var(--glow); }
+.reconnect { min-height: 36px; padding: 0 var(--s-3); font-size: var(--fs-sm); border-radius: 10px; margin-left: auto; }
+
+/* Notices */
+.message { padding: var(--s-3) 14px; background: var(--warn-soft); border: 1px solid color-mix(in srgb, var(--warn) 35%, transparent); border-radius: var(--r-lg); }
+.message .button { min-height: 36px; margin-top: var(--s-2); padding: 0 var(--s-3); font-size: var(--fs-sm); border-radius: 10px; background: var(--brand); border-color: var(--brand); color: var(--brand-ink); box-shadow: none; }
+.note { color: var(--mute); font-size: var(--fs-xs); }
+
+/* Sign out */
+main > form:last-child button { width: 100%; color: var(--bad); border-color: color-mix(in srgb, var(--bad) 30%, var(--line)); }
+main > form:last-child button:hover { background: var(--bad-soft); }
