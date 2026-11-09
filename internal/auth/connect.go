@@ -25,6 +25,7 @@ const (
 	keyPartial     = "connect_partial"
 	keyAlready     = "connect_already"
 	keyReconnected = "connect_reconnected"
+	keySyncFailed  = "connect_sync_failed"
 
 	// Status checks on open (decision D8).
 	defaultCheckInterval = 15 * time.Minute
@@ -51,6 +52,8 @@ func homeMessageFor(key string) (homeMessage, bool) {
 		return homeMessage{"That Gmail account is already connected.", false}, true
 	case keyReconnected:
 		return homeMessage{"Gmail account reconnected.", false}, true
+	case keySyncFailed:
+		return homeMessage{"Gmail is connected, but its sync could not start. Try again.", true}, true
 	case keyPartial:
 		return homeMessage{"Gmail wasn't connected. Geronimo needs permission to read and manage your mail, and that permission wasn't granted. Please try again.", true}, true
 	}
@@ -78,6 +81,8 @@ func syncNoticeFor(r store.SyncRecord) (syncNotice, bool) {
 		return syncNotice{Text: "Sync of " + r.Email + " stopped because access was removed. The mail already synced is kept.", Reconnect: true}, true
 	case store.StopRateLimited:
 		return syncNotice{Text: "Gmail is limiting requests, so the sync of " + r.Email + " stopped. The mail already synced is kept.", Retry: true}, true
+	case store.StopTokenUnreadable:
+		return syncNotice{Text: "The sync of " + r.Email + " stopped because its saved Gmail sign-in could not be read on this server. The mail already synced is kept.", Retry: true}, true
 	}
 	return syncNotice{Text: "The sync of " + r.Email + " stopped. The mail already synced is kept.", Retry: true}, true
 }
@@ -229,6 +234,24 @@ func (s *Service) checkOne(ctx context.Context, accountID int64, subject string)
 	}
 }
 
+// startSync creates the mailbox's first sync record, or restarts a stopped one, then starts it (D6, G1).
+// It reports false when the record cannot be created, so the home page can offer a retry.
+func (s *Service) startSync(ctx context.Context, accountID int64, subject string) bool {
+	mailboxID, err := s.Store.MailboxID(ctx, accountID, subject)
+	if err != nil {
+		s.Logger.Error("connect: find mailbox", "err", err)
+		return false
+	}
+	if err := s.Store.EnsureSync(ctx, mailboxID); err != nil {
+		s.Logger.Error("connect: create sync", "err", err)
+		return false
+	}
+	if s.Sync != nil {
+		s.Sync.Kick(mailboxID)
+	}
+	return true
+}
+
 func (s *Service) connectFail(w http.ResponseWriter, r *http.Request, key string) {
 	s.clearCookie(w, connectCookie)
 	w.Header().Set("Cache-Control", "no-store")
@@ -341,16 +364,13 @@ func (s *Service) connectCallback(w http.ResponseWriter, r *http.Request) {
 		s.connectFail(w, r, keyFailed)
 		return
 	}
-	// The connect step creates the first sync's record, or restarts a stopped one, then starts it (D6, G1).
-	if mailboxID, err := s.Store.MailboxID(r.Context(), sess.Account.ID, grant.Subject); err != nil {
-		s.Logger.Error("connect: find mailbox", "err", err)
-	} else if err := s.Store.EnsureSync(r.Context(), mailboxID); err != nil {
-		s.Logger.Error("connect: create sync", "err", err)
-	} else if s.Sync != nil {
-		s.Sync.Kick(mailboxID)
-	}
+	syncStarted := s.startSync(r.Context(), sess.Account.ID, grant.Subject)
 	s.clearCookie(w, connectCookie)
 	w.Header().Set("Cache-Control", "no-store")
+	if !syncStarted {
+		http.Redirect(w, r, "/?msg="+keySyncFailed, http.StatusSeeOther)
+		return
+	}
 	switch outcome {
 	case store.Replaced:
 		http.Redirect(w, r, "/?msg="+keyAlready, http.StatusSeeOther)

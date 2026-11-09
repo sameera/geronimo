@@ -20,6 +20,8 @@ const (
 	StopAccessRemoved = "access_removed"
 	StopRateLimited   = "rate_limited"
 	StopOther         = "other"
+	// StopTokenUnreadable means the stored token cannot be opened with the local key. Access was not removed at Google.
+	StopTokenUnreadable = "token_unreadable"
 )
 
 // syncSchema holds the first-sync tables. Every table hangs off a mailbox, so removing

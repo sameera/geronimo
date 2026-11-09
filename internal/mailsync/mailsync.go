@@ -11,6 +11,7 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"runtime/debug"
 	"sync"
 	"time"
 
@@ -98,7 +99,7 @@ func (w *Worker) Kick(mailboxID int64) {
 	go func() {
 		defer w.wg.Done()
 		for {
-			w.run(context.Background(), mailboxID)
+			w.runSafely(context.Background(), mailboxID)
 			w.mu.Lock()
 			if !w.rerun[mailboxID] {
 				delete(w.running, mailboxID)
@@ -128,6 +129,21 @@ func (w *Worker) Resume(ctx context.Context) error {
 	return nil
 }
 
+// runSafely runs one sync. A panic stops only this mailbox, with a stop recorded and logged (G4).
+func (w *Worker) runSafely(ctx context.Context, mailboxID int64) {
+	defer func() {
+		p := recover()
+		if p == nil {
+			return
+		}
+		w.o.Logger.Error("sync: panic", "mailbox", mailboxID, "panic", fmt.Sprintf("%T", p), "stack", string(debug.Stack()))
+		if err := w.o.Store.StopSync(context.WithoutCancel(ctx), mailboxID, store.StopOther); err != nil {
+			w.o.Logger.Error("sync: record panic stop", "err", err)
+		}
+	}()
+	w.run(ctx, mailboxID)
+}
+
 func (w *Worker) run(ctx context.Context, mailboxID int64) {
 	st := w.o.Store
 	rec, err := st.SyncFor(ctx, mailboxID)
@@ -140,7 +156,8 @@ func (w *Worker) run(ctx context.Context, mailboxID int64) {
 	}
 	refresh, err := st.RefreshToken(ctx, rec.AccountID, rec.Subject)
 	if errors.Is(err, store.ErrUndecryptable) {
-		err = fmt.Errorf("%w: stored token cannot be opened", ErrAccessRemoved)
+		w.halt(ctx, rec, store.StopTokenUnreadable)
+		return
 	}
 	if err != nil {
 		reason := store.StopOther

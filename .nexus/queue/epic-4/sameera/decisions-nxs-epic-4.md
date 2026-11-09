@@ -18,3 +18,13 @@
 - **Choice:** a done sync's strip line is marked shown in the same response that renders it. The next poll then shows nothing.
 - **Why:** the line appears once even if the poll never arrives, and no extra state or poll is needed.
 - **Refuted alternative:** acknowledge on the next poll. That leaves the line showing after a missed poll and needs a second request.
+
+## 2026-11-09 — Sync-start failure retries through the connect page
+- **Choice:** when the sync record cannot be created after connect, home shows a notice whose retry link goes to /connect.
+- **Why:** the connect step already creates the record, so a second connect reruns it with no new route or store call.
+- **Refuted alternative:** a new retry route that creates missing sync records. It needs a store listing of mailbox IDs and a new handler.
+
+## 2026-11-09 — Undecryptable token stops with retry, not reconnect
+- **Choice:** a token_unreadable stop offers Retry sync, not Reconnect.
+- **Why:** Reconnect would re-encrypt the token with the local key, which fixes the fault. Offering it again would repeat the "access removed" action the finding objects to.
+- **Refuted alternative:** Reconnect as the action. It would also fix the stored token, but the record reserves Reconnect for removed access (G6, D5).
