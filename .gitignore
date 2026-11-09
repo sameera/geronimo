@@ -28,3 +28,8 @@ go.work.sum
 
 # Nexus scratch (planning drafts, materialized epics)
 .nexus/tmp/
+
+# Local SQLite database
+geronimo.db
+geronimo.db-shm
+geronimo.db-wal
