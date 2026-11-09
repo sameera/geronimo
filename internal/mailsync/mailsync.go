@@ -205,7 +205,15 @@ func (w *Worker) step(ctx context.Context, rec *store.SyncRecord, token string) 
 		rec.ListedAll = listedAll
 		return false, ""
 	}
-	if err := st.FinishSync(ctx, rec.MailboxID); err != nil {
+	// The baseline is Gmail's inbox unread count at the finish, not at the start (G16).
+	var c gmail.Counts
+	if reason := w.try(ctx, func() (err error) {
+		c, err = w.o.Gmail.InboxCounts(ctx, token)
+		return err
+	}); reason != "" {
+		return false, reason
+	}
+	if err := st.FinishSync(ctx, rec.MailboxID, c.Unread); err != nil {
 		w.o.Logger.Error("sync: finish", "err", err)
 		return false, store.StopOther
 	}

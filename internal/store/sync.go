@@ -54,6 +54,11 @@ CREATE TABLE IF NOT EXISTS message_records (
 	labels TEXT NOT NULL,
 	PRIMARY KEY (mailbox_id, message_id)
 );
+CREATE TABLE IF NOT EXISTS baselines (
+	mailbox_id INTEGER PRIMARY KEY REFERENCES mailboxes(id) ON DELETE CASCADE,
+	unread INTEGER NOT NULL,
+	recorded_at INTEGER NOT NULL
+);
 `
 
 // SyncRecord is one mailbox's first sync.
@@ -199,12 +204,51 @@ func (s *Store) StopSync(ctx context.Context, mailboxID int64, reason string) er
 	return err
 }
 
-// FinishSync marks a running sync done.
-func (s *Store) FinishSync(ctx context.Context, mailboxID int64) error {
-	_, err := s.db.ExecContext(ctx,
+// FinishSync marks a running sync done. In the same transaction it stores the baseline,
+// the inbox unread count Gmail reported at this finish, unless one already exists (D8, G16, G17).
+// A sync that is not running changes nothing, so a finished mailbox keeps its baseline (G18).
+func (s *Store) FinishSync(ctx context.Context, mailboxID int64, unread int) error {
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+	now := s.now().Unix()
+	res, err := tx.ExecContext(ctx,
 		`UPDATE sync_records SET state = ?, stop_reason = '', finished_at = ? WHERE mailbox_id = ? AND state = ?`,
-		SyncDone, s.now().Unix(), mailboxID, SyncRunning)
-	return err
+		SyncDone, now, mailboxID, SyncRunning)
+	if err != nil {
+		return err
+	}
+	if n, _ := res.RowsAffected(); n != 1 {
+		return nil
+	}
+	if _, err := tx.ExecContext(ctx,
+		`INSERT OR IGNORE INTO baselines (mailbox_id, unread, recorded_at) VALUES (?, ?, ?)`,
+		mailboxID, unread, now); err != nil {
+		return err
+	}
+	return tx.Commit()
+}
+
+// Baseline is an account's unread count, recorded once when its first sync finished.
+type Baseline struct {
+	Unread     int
+	RecordedAt int64
+}
+
+// Baseline returns a mailbox's baseline, and false before its first sync finishes.
+func (s *Store) Baseline(ctx context.Context, mailboxID int64) (Baseline, bool, error) {
+	var b Baseline
+	err := s.db.QueryRowContext(ctx,
+		`SELECT unread, recorded_at FROM baselines WHERE mailbox_id = ?`, mailboxID).Scan(&b.Unread, &b.RecordedAt)
+	if errors.Is(err, sql.ErrNoRows) {
+		return Baseline{}, false, nil
+	}
+	if err != nil {
+		return Baseline{}, false, err
+	}
+	return b, true, nil
 }
 
 // StoreListPage saves one listed page of inbox IDs as pending, with the listing cursor, in one transaction (D2).

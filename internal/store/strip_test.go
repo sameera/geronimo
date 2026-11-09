@@ -14,7 +14,7 @@ func TestStripDoneNoticeIsAckedOnce(t *testing.T) { // G15
 	if err := st.StartRun(ctx, mb, 1); err != nil {
 		t.Fatal(err)
 	}
-	if err := st.FinishSync(ctx, mb); err != nil {
+	if err := st.FinishSync(ctx, mb, 0); err != nil {
 		t.Fatal(err)
 	}
 	rec, _ := st.SyncFor(ctx, mb)

@@ -63,7 +63,7 @@ func TestEnsureSyncStartsRecordAndRestartsOnlyStoppedOnes(t *testing.T) { // D6
 	if err := st.StartRun(ctx, mb, 1); err != nil {
 		t.Fatal(err)
 	}
-	if err := st.FinishSync(ctx, mb); err != nil {
+	if err := st.FinishSync(ctx, mb, 0); err != nil {
 		t.Fatal(err)
 	}
 	if err := st.EnsureSync(ctx, mb); err != nil {
