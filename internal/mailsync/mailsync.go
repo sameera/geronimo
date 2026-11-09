@@ -59,7 +59,9 @@ type Worker struct {
 	o       Options
 	mu      sync.Mutex
 	running map[int64]bool
-	wg      sync.WaitGroup
+	// rerun marks a mailbox kicked while its sync was still running. Its goroutine runs once more.
+	rerun map[int64]bool
+	wg    sync.WaitGroup
 }
 
 // New builds a worker.
@@ -73,7 +75,7 @@ func New(o Options) *Worker {
 	if o.Backoff == nil {
 		o.Backoff = defaultBackoff
 	}
-	return &Worker{o: o, running: map[int64]bool{}}
+	return &Worker{o: o, running: map[int64]bool{}, rerun: map[int64]bool{}}
 }
 
 func defaultBackoff(attempt int) time.Duration {
@@ -82,9 +84,11 @@ func defaultBackoff(attempt int) time.Duration {
 }
 
 // Kick starts the mailbox's sync in the background. A sync already running is not started twice.
+// A Kick that lands while the mailbox's goroutine is still exiting is run again before it exits.
 func (w *Worker) Kick(mailboxID int64) {
 	w.mu.Lock()
 	if w.running[mailboxID] {
+		w.rerun[mailboxID] = true
 		w.mu.Unlock()
 		return
 	}
@@ -93,12 +97,17 @@ func (w *Worker) Kick(mailboxID int64) {
 	w.wg.Add(1)
 	go func() {
 		defer w.wg.Done()
-		defer func() {
+		for {
+			w.run(context.Background(), mailboxID)
 			w.mu.Lock()
-			delete(w.running, mailboxID)
+			if !w.rerun[mailboxID] {
+				delete(w.running, mailboxID)
+				w.mu.Unlock()
+				return
+			}
+			delete(w.rerun, mailboxID)
 			w.mu.Unlock()
-		}()
-		w.run(context.Background(), mailboxID)
+		}
 	}()
 }
 

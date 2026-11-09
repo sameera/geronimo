@@ -3,6 +3,7 @@ package mailsync_test
 import (
 	"context"
 	"errors"
+	"log/slog"
 	"os"
 	"path/filepath"
 	"slices"
@@ -352,6 +353,60 @@ func TestRetryContinuesWithoutDuplicates(t *testing.T) { // G6, G7
 	}
 	if got := e.messages(id); strings.Join(got, ",") != "m2,m1,m0" {
 		t.Fatalf("messages after retry = %v", got)
+	}
+}
+
+// stopHook runs fn on every log record. The sync logs "sync stopped" after it writes the stop.
+type stopHook struct{ fn func(msg string) }
+
+func (h stopHook) Enabled(context.Context, slog.Level) bool { return true }
+func (h stopHook) Handle(_ context.Context, r slog.Record) error {
+	h.fn(r.Message)
+	return nil
+}
+func (h stopHook) WithAttrs([]slog.Attr) slog.Handler { return h }
+func (h stopHook) WithGroup(string) slog.Handler      { return h }
+
+func TestRetryLandingWhileTheStoppedSyncExitsStillRestarts(t *testing.T) { // G7, #37 AC4
+	e := newEnv(t)
+	id := e.mailbox("a", "refresh-a")
+	e.gm.setInbox("access-refresh-a", []string{"m2", "m1"}, []string{"m0"})
+	broken := true
+	e.gm.hook = func(op, token string, page int) error {
+		if op == "list" && page == 1 && broken {
+			return serverErr
+		}
+		return nil
+	}
+	var w *mailsync.Worker
+	var once sync.Once
+	w = mailsync.New(mailsync.Options{
+		Store:       e.st,
+		Tokens:      fakeTokens{},
+		Gmail:       e.gm,
+		Backoff:     func(int) time.Duration { return 0 },
+		MaxFailures: 3,
+		Logger: slog.New(stopHook{fn: func(msg string) {
+			if msg != "sync stopped" {
+				return
+			}
+			// The retry lands after the stop is written but before the stopped sync's goroutine exits.
+			once.Do(func() {
+				broken = false
+				if err := e.st.EnsureSync(context.Background(), id); err != nil {
+					t.Error(err)
+				}
+				w.Kick(id)
+			})
+		}}),
+	})
+	e.start(w, id)
+	w.Wait()
+	if rec := e.sync(id); rec.State != store.SyncDone {
+		t.Fatalf("state after retry landed during exit = %s", rec.State)
+	}
+	if got := e.messages(id); strings.Join(got, ",") != "m2,m1,m0" {
+		t.Fatalf("messages = %v", got)
 	}
 }
 
