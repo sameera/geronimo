@@ -2,6 +2,7 @@
     <h1>Geronimo</h1>
     <p>Signed in as {{.Name}} ({{.Email}}).</p>
     {{if .HasNotice}}<p role="status" class="message">{{.Notice.Text}}{{if .Notice.Retry}} <a id="retry" class="button" href="/connect">Try again</a>{{end}}</p>{{end}}
+    {{range .SyncNotices}}<div role="status" class="message sync-notice"><p>{{.Text}}</p>{{if .Reconnect}}<a class="button reconnect" href="/connect">Reconnect</a>{{end}}{{if .Retry}}<form method="post" action="/sync/retry"><button type="submit">Retry sync</button></form>{{end}}</div>{{end}}
     {{if and .Mailboxes (not .ShowConnect)}}
     <section id="mailboxes">
         <h2>Your Gmail accounts</h2>

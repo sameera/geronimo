@@ -36,6 +36,8 @@ type Options struct {
 	Connector Connector
 	Profiler  Profiler
 	Checker   Checker
+	// Sync starts a mailbox's first sync. Nil means no syncs start from the web.
+	Sync Syncer
 	// CheckInterval and CheckTimeout default to 15 minutes and 3 seconds.
 	CheckInterval    time.Duration
 	CheckTimeout     time.Duration
@@ -96,6 +98,7 @@ func (s *Service) Handler(app http.Handler) http.Handler {
 	mux.HandleFunc("POST /signout", s.signOut)
 	mux.HandleFunc("GET /{$}", s.home)
 	mux.HandleFunc("GET /connect", s.preConsent)
+	mux.HandleFunc("POST /sync/retry", s.syncRetry)
 	mux.HandleFunc("POST /connect/google/start", s.connectStart)
 	mux.HandleFunc("GET /connect/google/callback", s.connectCallback)
 	mux.Handle("/", app)

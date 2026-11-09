@@ -11,6 +11,7 @@ import (
 	"github.com/sameera/geronimo/internal/auth"
 	"github.com/sameera/geronimo/internal/config"
 	"github.com/sameera/geronimo/internal/gmail"
+	"github.com/sameera/geronimo/internal/mailsync"
 	"github.com/sameera/geronimo/internal/store"
 )
 
@@ -45,12 +46,24 @@ func run() error {
 	}()
 
 	connector := auth.NewGoogleConnect(auth.GoogleIssuer, cfg.GoogleClientID, cfg.GoogleClientSecret, cfg.ConnectRedirectURL())
+	mail := gmail.New(gmail.DefaultBaseURL, &http.Client{Timeout: 10 * time.Second})
+	syncer := mailsync.New(mailsync.Options{
+		Store:  st,
+		Tokens: connector,
+		Gmail:  mail,
+		Pace:   20 * time.Millisecond, // about 50 reads a second, under Gmail's per-user quota
+	})
+	// Continue the syncs a previous run left unfinished (G8).
+	if err := syncer.Resume(context.Background()); err != nil {
+		return err
+	}
 	svc := auth.New(auth.Options{
 		Store:            st,
 		Provider:         auth.NewGoogle(auth.GoogleIssuer, cfg.GoogleClientID, cfg.GoogleClientSecret, cfg.RedirectURL()),
 		Connector:        connector,
 		Checker:          connector,
-		Profiler:         gmail.New(gmail.DefaultBaseURL, &http.Client{Timeout: 10 * time.Second}),
+		Profiler:         mail,
+		Sync:             syncer,
 		BaseURL:          cfg.BaseURL,
 		IdleLifetime:     cfg.IdleLifetime,
 		AbsoluteLifetime: cfg.AbsoluteLifetime,

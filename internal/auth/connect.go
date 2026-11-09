@@ -57,11 +57,37 @@ func homeMessageFor(key string) (homeMessage, bool) {
 	return homeMessage{}, false
 }
 
+// Syncer starts a mailbox's sync in the background.
+type Syncer interface {
+	Kick(mailboxID int64)
+}
+
+// syncNotice is a stopped sync's plain message and its one action (G6).
+type syncNotice struct {
+	Text      string
+	Retry     bool // offers Retry sync
+	Reconnect bool // offers Reconnect, for removed access
+}
+
+func syncNoticeFor(r store.SyncRecord) (syncNotice, bool) {
+	if r.State != store.SyncStopped {
+		return syncNotice{}, false
+	}
+	switch r.StopReason {
+	case store.StopAccessRemoved:
+		return syncNotice{Text: "Sync of " + r.Email + " stopped because access was removed. The mail already synced is kept.", Reconnect: true}, true
+	case store.StopRateLimited:
+		return syncNotice{Text: "Gmail is limiting requests, so the sync of " + r.Email + " stopped. The mail already synced is kept.", Retry: true}, true
+	}
+	return syncNotice{Text: "The sync of " + r.Email + " stopped. The mail already synced is kept.", Retry: true}, true
+}
+
 type homePage struct {
 	page
-	Notice    homeMessage
-	HasNotice bool
-	Mailboxes []store.MailboxInfo
+	Notice      homeMessage
+	HasNotice   bool
+	SyncNotices []syncNotice
+	Mailboxes   []store.MailboxInfo
 	// ShowConnect shows the pre-consent screen even when accounts are connected (G24).
 	ShowConnect bool
 }
@@ -86,7 +112,50 @@ func (s *Service) home(w http.ResponseWriter, r *http.Request) {
 		Mailboxes: boxes,
 	}
 	data.Notice, data.HasNotice = homeMessageFor(r.URL.Query().Get("msg"))
+	syncs, err := s.Store.AccountSyncs(r.Context(), sess.Account.ID)
+	if err != nil {
+		s.Logger.Error("home: list syncs", "err", err)
+	}
+	for _, rec := range syncs {
+		if n, ok := syncNoticeFor(rec); ok {
+			data.SyncNotices = append(data.SyncNotices, n)
+		}
+	}
 	web.Render(w, http.StatusOK, "home.html", data)
+}
+
+// syncRetry restarts the stopped syncs of the signed-in account that a retry can resume.
+// A removed-access stop is resumed by reconnecting instead (decision D5). Only a same-origin POST retries (G20).
+func (s *Service) syncRetry(w http.ResponseWriter, r *http.Request) {
+	if !s.sameOrigin(r) {
+		http.Error(w, "forbidden", http.StatusForbidden)
+		return
+	}
+	sess, ok := SessionFrom(r)
+	if !ok {
+		s.refuse(w, r)
+		return
+	}
+	syncs, err := s.Store.AccountSyncs(r.Context(), sess.Account.ID)
+	if err != nil {
+		s.Logger.Error("sync retry: list", "err", err)
+		http.Error(w, "something went wrong", http.StatusInternalServerError)
+		return
+	}
+	for _, rec := range syncs {
+		if rec.State != store.SyncStopped || rec.StopReason == store.StopAccessRemoved {
+			continue
+		}
+		if err := s.Store.EnsureSync(r.Context(), rec.MailboxID); err != nil {
+			s.Logger.Error("sync retry: restart", "err", err)
+			continue
+		}
+		if s.Sync != nil {
+			s.Sync.Kick(rec.MailboxID)
+		}
+	}
+	w.Header().Set("Cache-Control", "no-store")
+	http.Redirect(w, r, "/", http.StatusSeeOther)
 }
 
 // preConsent is where retry and reconnect lead (G24). It shows the pre-consent
@@ -269,6 +338,14 @@ func (s *Service) connectCallback(w http.ResponseWriter, r *http.Request) {
 		s.Logger.Error("connect failed", "stage", "store", "err", err)
 		s.connectFail(w, r, keyFailed)
 		return
+	}
+	// The connect step creates the first sync's record, or restarts a stopped one, then starts it (D6, G1).
+	if mailboxID, err := s.Store.MailboxID(r.Context(), sess.Account.ID, grant.Subject); err != nil {
+		s.Logger.Error("connect: find mailbox", "err", err)
+	} else if err := s.Store.EnsureSync(r.Context(), mailboxID); err != nil {
+		s.Logger.Error("connect: create sync", "err", err)
+	} else if s.Sync != nil {
+		s.Sync.Kick(mailboxID)
 	}
 	s.clearCookie(w, connectCookie)
 	w.Header().Set("Cache-Control", "no-store")

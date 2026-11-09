@@ -34,7 +34,7 @@ func Open(path string, now func() time.Time) (*Store, error) {
 	// One writer at a time (decision D11). This also serializes racing sign-ins.
 	db.SetMaxOpenConns(1)
 	s := &Store{db: db, now: now}
-	if _, err := db.Exec(schema); err != nil {
+	if _, err := db.Exec(schema + syncSchema); err != nil {
 		db.Close()
 		return nil, fmt.Errorf("migrate: %w", err)
 	}
