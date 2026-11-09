@@ -87,6 +87,7 @@ type homePage struct {
 	Notice      homeMessage
 	HasNotice   bool
 	SyncNotices []syncNotice
+	Strip       strip
 	Mailboxes   []store.MailboxInfo
 	// ShowConnect shows the pre-consent screen even when accounts are connected (G24).
 	ShowConnect bool
@@ -121,6 +122,7 @@ func (s *Service) home(w http.ResponseWriter, r *http.Request) {
 			data.SyncNotices = append(data.SyncNotices, n)
 		}
 	}
+	data.Strip = s.stripFrom(r.Context(), syncs)
 	web.Render(w, http.StatusOK, "home.html", data)
 }
 

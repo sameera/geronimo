@@ -99,6 +99,7 @@ func (s *Service) Handler(app http.Handler) http.Handler {
 	mux.HandleFunc("GET /{$}", s.home)
 	mux.HandleFunc("GET /connect", s.preConsent)
 	mux.HandleFunc("POST /sync/retry", s.syncRetry)
+	mux.HandleFunc("GET /sync/strip", s.syncStrip)
 	mux.HandleFunc("POST /connect/google/start", s.connectStart)
 	mux.HandleFunc("GET /connect/google/callback", s.connectCallback)
 	mux.Handle("/", app)

@@ -177,6 +177,12 @@ func (s *Store) listSyncs(ctx context.Context, query string, args ...any) ([]Syn
 	return out, rows.Err()
 }
 
+// MarkStripAcked records that the done line of a mailbox's sync has been shown (G15).
+func (s *Store) MarkStripAcked(ctx context.Context, mailboxID int64) error {
+	_, err := s.db.ExecContext(ctx, `UPDATE sync_records SET strip_acked = 1 WHERE mailbox_id = ?`, mailboxID)
+	return err
+}
+
 // StartRun moves a starting sync to running and stores the inbox total read at its start (D7).
 func (s *Store) StartRun(ctx context.Context, mailboxID int64, inboxTotal int) error {
 	_, err := s.db.ExecContext(ctx,

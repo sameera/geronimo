@@ -13,3 +13,8 @@
 - **Choice:** HTTP 429 and 403 both map to the rate-limited stop reason.
 - **Why:** Gmail's quota errors arrive as 403, and the access point reads no body to tell them apart.
 - **Refuted alternative:** 429 only. Quota 403s would then stop as "other".
+
+## 2026-11-09 — Done notice acknowledged when rendered
+- **Choice:** a done sync's strip line is marked shown in the same response that renders it. The next poll then shows nothing.
+- **Why:** the line appears once even if the poll never arrives, and no extra state or poll is needed.
+- **Refuted alternative:** acknowledge on the next poll. That leaves the line showing after a missed poll and needs a second request.
