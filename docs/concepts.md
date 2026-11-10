@@ -4,9 +4,15 @@
 
 # Concept Atlas
 
-Orientation map of the concept store — 3 active concepts. Each links to its full page
+Orientation map of the concept store — 6 active concepts. Each links to its full page
 (behavior, invariants, decision history); code locations live in the matching
 `.nexus/anchors/<slug>.md` sidecar.
+
+## Mailbox Sync
+
+- [Mailbox Sync](../.nexus/concepts/mailbox-sync.md) — After a Gmail account connects, Geronimo copies the metadata of its inbox mail into its own database with no further action from the user.
+- [Sync Progress Strip](../.nexus/concepts/sync-progress-strip.md) — Home shows one line per connected Gmail account whose first sync is not done, such as "12,400 of 31,000 emails".
+- [Unread Baseline](../.nexus/concepts/unread-baseline.md) — Geronimo records each Gmail account's inbox unread count once, when its first sync finishes.
 
 ## Signed-In Sessions
 
