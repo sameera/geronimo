@@ -1,0 +1,1 @@
+{{define "strip"}}<div id="sync-strip"{{if .Poll}} hx-get="/sync/strip" hx-trigger="every 2s" hx-swap="outerHTML"{{end}}>{{range .Lines}}<p class="sync-line" role="status">{{.}}</p>{{end}}</div>{{end}}
