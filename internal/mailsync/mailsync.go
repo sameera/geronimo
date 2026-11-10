@@ -295,6 +295,16 @@ func (w *Worker) fetch(ctx context.Context, mailboxID int64, token string, ids [
 		go func() {
 			defer wg.Done()
 			defer func() { <-sem }()
+			// A panic in one read stops only this mailbox, as runSafely does for the run (G4).
+			defer func() {
+				p := recover()
+				if p == nil {
+					return
+				}
+				w.o.Logger.Error("sync: panic in read", "mailbox", mailboxID, "panic", fmt.Sprintf("%T", p), "stack", string(debug.Stack()))
+				results[i].reason = store.StopOther
+				cancel()
+			}()
 			if reason := wait(); reason != "" {
 				results[i].reason = reason
 				return
