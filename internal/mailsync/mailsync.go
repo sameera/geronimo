@@ -23,7 +23,9 @@ import (
 var ErrAccessRemoved = errors.New("access was removed at Google")
 
 const (
-	batchSize          = 25
+	batchSize = 25
+	// fetchConcurrency bounds the metadata reads in flight for one mailbox.
+	fetchConcurrency   = 5
 	defaultMaxFailures = 5
 	// reasonCancelled ends a run without changing its record. The next start resumes it.
 	reasonCancelled = "cancelled"
@@ -218,6 +220,12 @@ func (w *Worker) step(ctx context.Context, rec *store.SyncRecord, token string) 
 		var page gmail.MessagePage
 		if reason := w.try(ctx, func() (err error) {
 			page, err = w.o.Gmail.ListInbox(ctx, token, rec.Cursor)
+			if gmail.IsBadRequest(err) && rec.Cursor != "" {
+				// Gmail rejected the saved position. List again from the top. Stored IDs are skipped (D5).
+				w.o.Logger.Warn("sync: listing position rejected, listing from the top")
+				rec.Cursor = ""
+				page, err = w.o.Gmail.ListInbox(ctx, token, "")
+			}
 			return err
 		}); reason != "" {
 			return false, reason
@@ -246,46 +254,98 @@ func (w *Worker) step(ctx context.Context, rec *store.SyncRecord, token string) 
 	return true, ""
 }
 
-// fetch reads the metadata of pending IDs and stores them in one batch.
+// fetch reads the metadata of pending IDs, a few at a time, and stores them in one batch.
+// Reads share one pacing gate, so the per-user quota holds however many run at once (D5).
 func (w *Worker) fetch(ctx context.Context, mailboxID int64, token string, ids []string) string {
+	type result struct {
+		msg     store.Message
+		missing bool
+		reason  string
+	}
+	results := make([]result, len(ids))
+	runCtx, cancel := context.WithCancel(ctx)
+	defer cancel()
+	var gate sync.Mutex
+	var next time.Time
+	// wait reserves the next read slot, so reads start at most one Pace apart.
+	wait := func() string {
+		if w.o.Pace <= 0 {
+			return ""
+		}
+		gate.Lock()
+		now := time.Now()
+		if next.Before(now) {
+			next = now
+		}
+		at := next
+		next = next.Add(w.o.Pace)
+		gate.Unlock()
+		select {
+		case <-runCtx.Done():
+			return reasonCancelled
+		case <-time.After(time.Until(at)):
+			return ""
+		}
+	}
+	sem := make(chan struct{}, fetchConcurrency)
+	var wg sync.WaitGroup
+	for i, id := range ids {
+		sem <- struct{}{}
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			defer func() { <-sem }()
+			if reason := wait(); reason != "" {
+				results[i].reason = reason
+				return
+			}
+			var m gmail.Message
+			reason := w.try(runCtx, func() error {
+				got, err := w.o.Gmail.Metadata(runCtx, token, id)
+				if gmail.IsNotFound(err) {
+					results[i].missing = true
+					return nil
+				}
+				m = got
+				return err
+			})
+			if reason != "" {
+				results[i].reason = reason
+				cancel()
+				return
+			}
+			results[i].msg = store.Message{
+				ID:              m.ID,
+				ThreadID:        m.ThreadID,
+				Sender:          m.From,
+				Recipients:      m.To,
+				Subject:         m.Subject,
+				Date:            m.Date,
+				ListID:          m.ListID,
+				ListUnsubscribe: m.ListUnsubscribe,
+				Labels:          m.Labels,
+			}
+		}()
+	}
+	wg.Wait()
+	// Report the first real failure. A cancelled read is a side effect of it, unless the caller cancelled.
+	stop := ""
+	for _, r := range results {
+		if r.reason != "" && (stop == "" || stop == reasonCancelled) {
+			stop = r.reason
+		}
+	}
+	if stop != "" {
+		return stop
+	}
 	var batch []store.Message
 	var gone []string
-	for _, id := range ids {
-		var m gmail.Message
-		var missing bool
-		if reason := w.try(ctx, func() error {
-			got, err := w.o.Gmail.Metadata(ctx, token, id)
-			if gmail.IsNotFound(err) {
-				missing = true
-				return nil
-			}
-			m = got
-			return err
-		}); reason != "" {
-			return reason
-		}
-		if missing {
-			gone = append(gone, id)
+	for i, r := range results {
+		if r.missing {
+			gone = append(gone, ids[i])
 			continue
 		}
-		batch = append(batch, store.Message{
-			ID:              m.ID,
-			ThreadID:        m.ThreadID,
-			Sender:          m.From,
-			Recipients:      m.To,
-			Subject:         m.Subject,
-			Date:            m.Date,
-			ListID:          m.ListID,
-			ListUnsubscribe: m.ListUnsubscribe,
-			Labels:          m.Labels,
-		})
-		if w.o.Pace > 0 {
-			select {
-			case <-ctx.Done():
-				return reasonCancelled
-			case <-time.After(w.o.Pace):
-			}
-		}
+		batch = append(batch, r.msg)
 	}
 	if _, err := w.o.Store.StoreMessages(ctx, mailboxID, batch, gone); err != nil {
 		w.o.Logger.Error("sync: store batch", "err", err)

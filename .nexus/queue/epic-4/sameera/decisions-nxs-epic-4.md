@@ -28,3 +28,13 @@
 - **Choice:** a token_unreadable stop offers Retry sync, not Reconnect.
 - **Why:** Reconnect would re-encrypt the token with the local key, which fixes the fault. Offering it again would repeat the "access removed" action the finding objects to.
 - **Refuted alternative:** Reconnect as the action. It would also fix the stored token, but the record reserves Reconnect for removed access (G6, D5).
+
+## 2026-11-10 — Fetch metadata with 5 concurrent reads behind one shared pacing gate
+- **Choice:** fetch() runs up to 5 reads at once per mailbox; all reads draw start slots from one gate spaced by Pace, so the rate stays near 50/s.
+- **Why:** Sequential reads were bounded by round-trip latency, not quota (DV4).
+- **Refuted alternative:** Amend the record to say one read at a time.
+
+## 2026-11-10 — Rejected listing cursor (HTTP 400) clears the cursor and relists from the top
+- **Choice:** On a 400 with a non-empty cursor, relist from the top in the same attempt; StoreListPage skips IDs already in message_records.
+- **Why:** Record step 6 says the worker lists again from the top and stored IDs are skipped (DV3).
+- **Refuted alternative:** Stop the sync with reason other on a rejected cursor.

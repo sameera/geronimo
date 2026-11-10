@@ -78,6 +78,12 @@ func IsNotFound(err error) bool {
 	return errors.As(err, &se) && se.Code == http.StatusNotFound
 }
 
+// IsBadRequest reports whether Gmail rejected the request as malformed, such as a stale page token.
+func IsBadRequest(err error) bool {
+	var se *StatusError
+	return errors.As(err, &se) && se.Code == http.StatusBadRequest
+}
+
 // Client sends the allowed requests.
 type Client struct {
 	base string

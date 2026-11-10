@@ -262,7 +262,9 @@ func (s *Store) StoreListPage(ctx context.Context, mailboxID int64, ids []string
 	defer tx.Rollback()
 	for _, id := range ids {
 		if _, err := tx.ExecContext(ctx,
-			`INSERT OR IGNORE INTO pending_messages (mailbox_id, message_id) VALUES (?, ?)`, mailboxID, id); err != nil {
+			`INSERT OR IGNORE INTO pending_messages (mailbox_id, message_id)
+			 SELECT ?1, ?2 WHERE NOT EXISTS
+				(SELECT 1 FROM message_records WHERE mailbox_id = ?1 AND message_id = ?2)`, mailboxID, id); err != nil {
 			return err
 		}
 	}
