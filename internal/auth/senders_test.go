@@ -312,6 +312,11 @@ func TestPageScriptSavesOnlyScrollPositions(t *testing.T) { // #42, G17, G18
 			t.Errorf("page script lacks %q", want)
 		}
 	}
+	// The sender view's saved offset is keyed on sort only, so /senders, /senders?sort=X and
+	// /senders?n=<shown> all find the same offset on back (G17).
+	if !strings.Contains(body, `"scroll:/senders?sort="`) || !strings.Contains(body, `get("sort") || "total"`) {
+		t.Error("sender view scroll key must be built from sort, not the raw address")
+	}
 	for _, bad := range []string{"localStorage", "innerHTML", "textContent.", "document.cookie"} {
 		if strings.Contains(strings.ReplaceAll(body, "el.textContent = d.toLocaleDateString()", ""), bad) {
 			t.Errorf("page script uses %q", bad)

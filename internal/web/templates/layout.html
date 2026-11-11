@@ -21,7 +21,13 @@
         });
     }
     // Scroll offsets only, saved per page address in this tab. No mail data is stored.
-    function key() { return "scroll:" + location.pathname + location.search; }
+    // The sender view is keyed on sort only: its address may or may not carry n (G17).
+    function key() {
+        if (location.pathname === "/senders") {
+            return "scroll:/senders?sort=" + (new URLSearchParams(location.search).get("sort") || "total");
+        }
+        return "scroll:" + location.pathname + location.search;
+    }
     function save() { sessionStorage.setItem(key(), String(Math.round(window.scrollY))); }
     window.addEventListener("pagehide", save);
     document.addEventListener("DOMContentLoaded", function () {
