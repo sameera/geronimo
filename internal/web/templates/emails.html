@@ -1,0 +1,8 @@
+{{define "email_rows"}}{{range .Rows}}<div class="email-row{{if .Unread}} unread{{end}}"><span class="subject">{{.Subject}}</span><span class="meta"><span class="read-state">{{if .Unread}}Unread{{else}}Read{{end}}</span>{{if .HasDate}} <time datetime="{{.DateISO}}">{{.DateUTC}}</time>{{end}}</span></div>
+{{end}}{{if .MoreHref}}<button type="button" class="more" hx-get="{{.MoreHref}}" hx-target="this" hx-swap="outerHTML">Load more</button>{{end}}{{end}}
+{{template "head" .}}
+    <h1>{{.SenderName}}</h1>
+    <p class="sender-head"><span class="addr">{{.SenderAddress}}</span> <span class="total">{{.Total}}</span></p>
+    <div id="email-list" class="emails">{{template "email_rows" .}}</div>
+    <p><a href="/senders">All senders</a></p>
+{{template "foot" .}}

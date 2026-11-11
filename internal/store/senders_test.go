@@ -176,3 +176,75 @@ func TestStoreMessagesKeepsNoBodyColumns(t *testing.T) { // G24
 		}
 	}
 }
+
+func TestEmailsPageThroughEverySenderEmailOnce(t *testing.T) { // G3, G19, D8
+	st, acct, mb := openSyncStore(t)
+	ctx := context.Background()
+	var msgs []Message
+	for i := 1; i <= 7; i++ {
+		msgs = append(msgs, msg(string(rune('a'+i)), "a@x.com", "Mon, 0"+string(rune('0'+i))+" Jan 2006 10:00:00 +0000"))
+	}
+	msgs = append(msgs, msg("u1", "A@x.com", "bad"), msg("u2", "a@x.com", ""), msg("z", "other@x.com", ""))
+	st.StoreMessages(ctx, mb, msgs, nil)
+
+	sum, err := st.SenderSummary(ctx, acct, "a@x.com")
+	if err != nil || sum.Total != 9 || sum.Address != "a@x.com" {
+		t.Fatalf("summary = %+v, %v", sum, err)
+	}
+	seen := map[string]bool{}
+	var after *EmailCursor
+	var order []int64
+	for pages := 0; pages < 10; pages++ {
+		page, next, err := st.SenderEmails(ctx, acct, "a@x.com", after, 4)
+		if err != nil {
+			t.Fatal(err)
+		}
+		for _, e := range page {
+			if seen[e.MessageID] {
+				t.Fatalf("%s repeated", e.MessageID)
+			}
+			seen[e.MessageID] = true
+			order = append(order, e.Date)
+		}
+		if pages == 0 {
+			// a sync stores older and newer mail between pages: nothing repeats or is skipped
+			st.StoreMessages(ctx, mb, []Message{msg("new", "a@x.com", "Fri, 01 Jan 2010 10:00:00 +0000"), msg("old", "a@x.com", "Sun, 01 Jan 1995 10:00:00 +0000")}, nil)
+		}
+		if next == nil {
+			break
+		}
+		after = next
+	}
+	for _, id := range []string{"b", "c", "d", "e", "f", "g", "h", "u1", "u2", "old"} {
+		if !seen[id] {
+			t.Errorf("%s was skipped", id)
+		}
+	}
+	if seen["z"] {
+		t.Error("another sender's email listed")
+	}
+	// newest first; unknown dates last
+	for i := 1; i < len(order); i++ {
+		if order[i] > order[i-1] {
+			t.Fatalf("order not newest first: %v", order)
+		}
+	}
+}
+
+func TestEmailsAreScopedToAccountAndUnknownSenderIsEmpty(t *testing.T) { // G10
+	st, acct, mb := openSyncStore(t)
+	ctx := context.Background()
+	other, _ := st.UpsertAccount(ctx, "google", Claims{Subject: "sub-2", Email: "o@example.com", Name: "O"})
+	st.SaveMailbox(ctx, other, Mailbox{Subject: "g-3", Email: "o@example.com", RefreshToken: "r3", Scopes: []string{"s"}})
+	mb3, _ := st.MailboxID(ctx, other, "g-3")
+	st.StoreMessages(ctx, mb3, []Message{msg("1", "secret@y.com", "")}, nil)
+	st.StoreMessages(ctx, mb, []Message{msg("1", "a@x.com", "")}, nil)
+	page, next, err := st.SenderEmails(ctx, acct, "secret@y.com", nil, 50)
+	if err != nil || len(page) != 0 || next != nil {
+		t.Fatalf("page = %+v next=%v err=%v", page, next, err)
+	}
+	sum, err := st.SenderSummary(ctx, acct, "secret@y.com")
+	if err != nil || sum.Total != 0 {
+		t.Fatalf("summary = %+v, %v", sum, err)
+	}
+}

@@ -205,3 +205,87 @@ func (g SenderGroup) Time() (time.Time, bool) {
 	}
 	return time.Unix(g.Newest, 0).UTC(), true
 }
+
+// SenderSummary is the header of a sender's email list.
+type SenderSummary struct {
+	Name    string
+	Address string
+	Total   int
+}
+
+// SenderSummary reads the sender's total and newest display name from the same account mail set the groups use (D4).
+// An unknown sender has total 0.
+func (s *Store) SenderSummary(ctx context.Context, accountID int64, key string) (SenderSummary, error) {
+	var sum SenderSummary
+	err := s.db.QueryRowContext(ctx,
+		`SELECT COUNT(*) FROM message_records r JOIN mailboxes m ON m.id = r.mailbox_id
+		 WHERE m.account_id = ? AND r.sender_key = ?`, accountID, key).Scan(&sum.Total)
+	if err != nil || sum.Total == 0 {
+		return sum, err
+	}
+	err = s.db.QueryRowContext(ctx,
+		`SELECT r.sender_name FROM message_records r JOIN mailboxes m ON m.id = r.mailbox_id
+		 WHERE m.account_id = ? AND r.sender_key = ? ORDER BY r.date_ts DESC, r.mailbox_id, r.message_id LIMIT 1`,
+		accountID, key).Scan(&sum.Name)
+	if err != nil {
+		return sum, err
+	}
+	if key != UnknownSenderKey {
+		sum.Address = key
+	}
+	return sum, nil
+}
+
+// Email is one row of a sender's email list.
+type Email struct {
+	MailboxID int64
+	MessageID string
+	Subject   string
+	Date      int64 // unix seconds, or UnknownDate
+	Unread    bool
+}
+
+// EmailCursor is the continuation point: the last email shown (D8).
+type EmailCursor struct {
+	Date      int64
+	MailboxID int64
+	MessageID string
+}
+
+// SenderEmails returns up to limit of the sender's emails after the continuation point, newest first,
+// unknown dates last, and the next continuation point or nil when no more exist.
+func (s *Store) SenderEmails(ctx context.Context, accountID int64, key string, after *EmailCursor, limit int) ([]Email, *EmailCursor, error) {
+	q := `SELECT r.mailbox_id, r.message_id, r.subject, r.date_ts, r.unread
+		FROM message_records r JOIN mailboxes m ON m.id = r.mailbox_id
+		WHERE m.account_id = ?1 AND r.sender_key = ?2`
+	args := []any{accountID, key, limit + 1}
+	if after != nil {
+		q += ` AND (r.date_ts < ?4 OR (r.date_ts = ?4 AND (r.mailbox_id > ?5 OR (r.mailbox_id = ?5 AND r.message_id > ?6))))`
+		args = append(args, after.Date, after.MailboxID, after.MessageID)
+	}
+	q += ` ORDER BY r.date_ts DESC, r.mailbox_id, r.message_id LIMIT ?3`
+	rows, err := s.db.QueryContext(ctx, q, args...)
+	if err != nil {
+		return nil, nil, err
+	}
+	defer rows.Close()
+	var out []Email
+	for rows.Next() {
+		var e Email
+		var unread int
+		if err := rows.Scan(&e.MailboxID, &e.MessageID, &e.Subject, &e.Date, &unread); err != nil {
+			return nil, nil, err
+		}
+		e.Unread = unread == 1
+		out = append(out, e)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, nil, err
+	}
+	if len(out) <= limit {
+		return out, nil, nil
+	}
+	out = out[:limit]
+	last := out[len(out)-1]
+	return out, &EmailCursor{Date: last.Date, MailboxID: last.MailboxID, MessageID: last.MessageID}, nil
+}

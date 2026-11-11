@@ -145,3 +145,91 @@ func TestSenderViewDoesNotChangeStoredMail(t *testing.T) { // G11
 		t.Errorf("gmail was called")
 	}
 }
+
+func TestEmailListShowsSenderEmails(t *testing.T) { // #41, D2, G12, G23
+	e := connectedEnv(t)
+	bad := m("3", "Ann <ann@x.com>", "Wed, 04 Jan 2006 15:04:05 +0000")
+	bad.Subject = "<b>bold</b>"
+	empty := m("4", "ann@x.com", "")
+	empty.Subject = ""
+	e.storeMail("one@example.com",
+		m("1", "Ann <ann@x.com>", "Mon, 02 Jan 2006 15:04:05 +0000", "UNREAD"),
+		m("2", "Ann <ann@x.com>", "Tue, 03 Jan 2006 15:04:05 +0000"),
+		bad, empty,
+		m("9", "other@x.com", ""),
+	)
+	resp, body := e.get(e.client, "/senders/emails?sender=ann%40x.com")
+	if resp.StatusCode != 200 || resp.Header.Get("Cache-Control") != "no-store" {
+		t.Fatalf("status %d cache %q", resp.StatusCode, resp.Header.Get("Cache-Control"))
+	}
+	for _, want := range []string{"Ann", "ann@x.com", "Subject 1", "Subject 2", "&lt;b&gt;bold&lt;/b&gt;", "(no subject)", `datetime="2006-01-02T15:04:05Z"`, "Unread", "Read"} {
+		if !strings.Contains(body, want) {
+			t.Errorf("body lacks %q", want)
+		}
+	}
+	if strings.Contains(body, "Subject 9") || strings.Contains(body, "<b>bold") {
+		t.Error("foreign email or markup rendered")
+	}
+	if strings.Count(body, `class="email-row`) != 4 {
+		t.Errorf("rows = %d", strings.Count(body, `class="email-row`))
+	}
+	if strings.Contains(body, `class="email-row`) && strings.Contains(between(body, `class="email-row`, "</div>"), "<a ") {
+		t.Error("email rows must not be links")
+	}
+}
+
+func between(s, from, to string) string {
+	i := strings.Index(s, from)
+	j := strings.Index(s[i:], to)
+	return s[i : i+j]
+}
+
+func TestEmailListCountMatchesGroupTotalAndLoadsMore(t *testing.T) { // #41, G3, G19, D8
+	e := connectedEnv(t)
+	var msgs []store.Message
+	for i := 0; i < 120; i++ {
+		msgs = append(msgs, m("m"+pad(i), "big@x.com", ""))
+	}
+	e.storeMail("one@example.com", msgs...)
+	_, view := e.get(e.client, "/senders")
+	if !strings.Contains(view, `<span class="total">120</span>`) {
+		t.Fatalf("group total missing:\n%s", view)
+	}
+	_, body := e.get(e.client, "/senders/emails?sender=big%40x.com")
+	if !strings.Contains(body, "120 emails") {
+		t.Errorf("header lacks total")
+	}
+	if n := strings.Count(body, `class="email-row`); n != 50 {
+		t.Fatalf("first page = %d rows", n)
+	}
+	total := 50
+	for i := 0; i < 5 && strings.Contains(body, `class="more"`); i++ {
+		i1 := strings.Index(body, `hx-get="`)
+		href := body[i1+len(`hx-get="`):]
+		href = strings.ReplaceAll(href[:strings.Index(href, `"`)], "&amp;", "&")
+		_, body = e.do(e.client, "GET", href, map[string]string{"HX-Request": "true"})
+		if strings.Contains(body, "<html") {
+			t.Fatal("fragment is a full page")
+		}
+		total += strings.Count(body, `class="email-row`)
+	}
+	if total != 120 {
+		t.Fatalf("rows reached = %d", total)
+	}
+}
+
+func TestEmailListUnknownSenderIsEmptyNotError(t *testing.T) { // G10
+	e := connectedEnv(t)
+	resp, body := e.get(e.client, "/senders/emails?sender=nobody%40x.com")
+	if resp.StatusCode != 200 || strings.Contains(body, `class="email-row`) {
+		t.Fatalf("status %d", resp.StatusCode)
+	}
+}
+
+func TestEmailListIsSignedInOnly(t *testing.T) { // G21
+	e := newEnv(t)
+	resp, _ := e.get(e.client, "/senders/emails?sender=a%40x.com")
+	if resp.StatusCode != http.StatusSeeOther || location(resp) != "/signin" {
+		t.Fatalf("status %d location %q", resp.StatusCode, location(resp))
+	}
+}
