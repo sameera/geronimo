@@ -92,6 +92,8 @@ func (s *Service) senderEmails(w http.ResponseWriter, r *http.Request) {
 	if next != nil {
 		data.MoreHref += "&" + view.query(view.Shown)
 	}
+	w.Header().Set("Vary", "HX-Request")
+	w.Header().Set("Cache-Control", "no-store")
 	if r.Header.Get("HX-Request") == "true" {
 		web.Render(w, http.StatusOK, "email_rows", data)
 		return

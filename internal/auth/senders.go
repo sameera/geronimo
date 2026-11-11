@@ -134,6 +134,8 @@ func (s *Service) senders(w http.ResponseWriter, r *http.Request) {
 			data.EmptyText = "Your mail is still syncing. Senders appear here as mail arrives."
 		}
 	}
+	w.Header().Set("Vary", "HX-Request")
+	w.Header().Set("Cache-Control", "no-store")
 	if r.Header.Get("HX-Request") == "true" {
 		web.Render(w, http.StatusOK, "sender_list", data)
 		return

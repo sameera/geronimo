@@ -28,11 +28,14 @@
         }
         return "scroll:" + location.pathname + location.search;
     }
-    function save() { sessionStorage.setItem(key(), String(Math.round(window.scrollY))); }
+    function save() {
+        try { sessionStorage.setItem(key(), String(Math.round(window.scrollY))); } catch (e) { /* storage unavailable */ }
+    }
     window.addEventListener("pagehide", save);
     document.addEventListener("DOMContentLoaded", function () {
         localDates(document);
-        var y = parseInt(sessionStorage.getItem(key()), 10);
+        var y = NaN;
+        try { y = parseInt(sessionStorage.getItem(key()), 10); } catch (e) { /* storage unavailable */ }
         if (!isNaN(y)) { window.scrollTo(0, y); }
         var back = document.getElementById("back");
         if (back) {
