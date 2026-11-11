@@ -306,12 +306,14 @@ func (s *Store) StoreMessages(ctx context.Context, mailboxID int64, msgs []Messa
 	defer tx.Rollback()
 	inserted := 0
 	for _, m := range msgs {
+		d := Derive(m.Sender, m.Date, m.Labels)
 		res, err := tx.ExecContext(ctx,
 			`INSERT OR IGNORE INTO message_records
-				(mailbox_id, message_id, thread_id, sender, recipients, subject, date, list_id, list_unsubscribe, labels)
-			 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+				(mailbox_id, message_id, thread_id, sender, recipients, subject, date, list_id, list_unsubscribe, labels,
+				 sender_key, sender_name, date_ts, unread)
+			 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
 			mailboxID, m.ID, m.ThreadID, m.Sender, m.Recipients, m.Subject, m.Date, m.ListID, m.ListUnsubscribe,
-			strings.Join(m.Labels, ","))
+			strings.Join(m.Labels, ","), d.Key, d.Name, d.Date, boolInt(d.Unread))
 		if err != nil {
 			return 0, err
 		}

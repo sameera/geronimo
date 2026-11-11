@@ -38,6 +38,10 @@ func Open(path string, now func() time.Time) (*Store, error) {
 		db.Close()
 		return nil, fmt.Errorf("migrate: %w", err)
 	}
+	if err := s.migrateSenders(); err != nil {
+		db.Close()
+		return nil, fmt.Errorf("migrate senders: %w", err)
+	}
 	return s, nil
 }
 
