@@ -7,6 +7,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/sameera/geronimo/internal/gmail"
 	"github.com/sameera/geronimo/internal/store"
 	"github.com/sameera/geronimo/internal/web"
 )
@@ -15,11 +16,13 @@ import (
 const emailChunk = 50
 
 type emailRow struct {
-	Subject string
-	Unread  bool
-	HasDate bool
-	DateISO string
-	DateUTC string
+	Href     string // opens the email in the Gmail account that holds it (#43)
+	MarkHref string // marks the email read on tap; empty for a read email
+	Subject  string
+	Unread   bool
+	HasDate  bool
+	DateISO  string
+	DateUTC  string
 }
 
 type emailPage struct {
@@ -30,6 +33,22 @@ type emailPage struct {
 	Rows          []emailRow
 	MoreHref      string
 	BackHref      string
+}
+
+// rowFor renders one stored email as a list row.
+func rowFor(e store.Email) emailRow {
+	row := emailRow{Href: gmail.WebURL(e.MailboxEmail, e.MessageID), Subject: e.Subject, Unread: e.Unread}
+	if e.Unread {
+		row.MarkHref = "/emails/read?" + url.Values{"mailbox": {strconv.FormatInt(e.MailboxID, 10)}, "message": {e.MessageID}}.Encode()
+	}
+	if row.Subject == "" {
+		row.Subject = "(no subject)"
+	}
+	if e.Date != store.UnknownDate {
+		t := time.Unix(e.Date, 0).UTC()
+		row.HasDate, row.DateISO, row.DateUTC = true, t.Format(time.RFC3339), t.Format("2006-01-02")
+	}
+	return row
 }
 
 func encodeCursor(c *store.EmailCursor) string {
@@ -74,15 +93,7 @@ func (s *Service) senderEmails(w http.ResponseWriter, r *http.Request) {
 	}
 	data := emailPage{page: page{SignedIn: true, Name: sess.Account.Name, Email: sess.Account.Email}}
 	for _, e := range emails {
-		row := emailRow{Subject: e.Subject, Unread: e.Unread}
-		if row.Subject == "" {
-			row.Subject = "(no subject)"
-		}
-		if e.Date != store.UnknownDate {
-			t := time.Unix(e.Date, 0).UTC()
-			row.HasDate, row.DateISO, row.DateUTC = true, t.Format(time.RFC3339), t.Format("2006-01-02")
-		}
-		data.Rows = append(data.Rows, row)
+		data.Rows = append(data.Rows, rowFor(e))
 	}
 	if next != nil {
 		data.MoreHref = "/senders/emails?sender=" + url.QueryEscape(key) + "&after=" + url.QueryEscape(encodeCursor(next))

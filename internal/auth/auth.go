@@ -38,6 +38,9 @@ type Options struct {
 	Checker   Checker
 	// Sync starts a mailbox's first sync. Nil means no syncs start from the web.
 	Sync Syncer
+	// Tokens and Mail mark a tapped email read in Gmail (#43). Nil means the read mark is never saved.
+	Tokens TokenSource
+	Mail   MailWriter
 	// CheckInterval and CheckTimeout default to 15 minutes and 3 seconds.
 	CheckInterval    time.Duration
 	CheckTimeout     time.Duration
@@ -99,6 +102,7 @@ func (s *Service) Handler(app http.Handler) http.Handler {
 	mux.HandleFunc("GET /{$}", s.home)
 	mux.HandleFunc("GET /senders", s.senders)
 	mux.HandleFunc("GET /senders/emails", s.senderEmails)
+	mux.HandleFunc("POST /emails/read", s.markRead)
 	mux.HandleFunc("GET /connect", s.preConsent)
 	mux.HandleFunc("POST /sync/retry", s.syncRetry)
 	mux.HandleFunc("GET /sync/strip", s.syncStrip)

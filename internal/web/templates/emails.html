@@ -1,8 +1,12 @@
-{{define "email_rows"}}{{range .Rows}}<div class="email-row{{if .Unread}} unread{{end}}"><span class="subject">{{.Subject}}</span><span class="meta"><span class="read-state">{{if .Unread}}Unread{{else}}Read{{end}}</span>{{if .HasDate}} <time datetime="{{.DateISO}}">{{.DateUTC}}</time>{{end}}</span></div>
+{{define "email_row"}}<div class="email-row{{if .Unread}} unread{{end}}"{{if .MarkHref}} hx-post="{{.MarkHref}}" hx-trigger="click" hx-swap="outerHTML"{{end}}><a class="email-open" href="{{.Href}}" target="_blank" rel="noopener noreferrer"><span class="subject">{{.Subject}}</span><span class="meta"><span class="read-state">{{if .Unread}}Unread{{else}}Read{{end}}</span>{{if .HasDate}} <time datetime="{{.DateISO}}">{{.DateUTC}}</time>{{end}}</span></a></div>{{end}}
+{{define "email_read"}}{{template "email_row" .Row}}{{if .Notice}}
+<p id="notice" class="message" role="alert" hx-swap-oob="true">{{.Notice}}</p>{{end}}{{end}}
+{{define "email_rows"}}{{range .Rows}}{{template "email_row" .}}
 {{end}}{{if .MoreHref}}<button type="button" class="more" hx-get="{{.MoreHref}}" hx-target="this" hx-swap="outerHTML">Load more</button>{{end}}{{end}}
 {{template "head" .}}
     <h1>{{.SenderName}}</h1>
     <p class="sender-head"><span class="addr">{{.SenderAddress}}</span> <span class="total">{{.Total}}</span></p>
+    <div id="notice"></div>
     <div id="email-list" class="emails">{{template "email_rows" .}}</div>
     <p><a id="back" href="{{.BackHref}}">Back to senders</a></p>
 {{template "foot" .}}

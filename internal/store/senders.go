@@ -3,6 +3,7 @@ package store
 import (
 	"context"
 	"database/sql"
+	"errors"
 	"math"
 	"net/mail"
 	"strings"
@@ -257,11 +258,12 @@ func (s *Store) SenderSummary(ctx context.Context, accountID int64, key string) 
 
 // Email is one row of a sender's email list.
 type Email struct {
-	MailboxID int64
-	MessageID string
-	Subject   string
-	Date      int64 // unix seconds, or UnknownDate
-	Unread    bool
+	MailboxID    int64
+	MailboxEmail string // the Gmail account that holds the email
+	MessageID    string
+	Subject      string
+	Date         int64 // unix seconds, or UnknownDate
+	Unread       bool
 }
 
 // EmailCursor is the continuation point: the last email shown (D8).
@@ -274,7 +276,7 @@ type EmailCursor struct {
 // SenderEmails returns up to limit of the sender's emails after the continuation point, newest first,
 // unknown dates last, and the next continuation point or nil when no more exist.
 func (s *Store) SenderEmails(ctx context.Context, accountID int64, key string, after *EmailCursor, limit int) ([]Email, *EmailCursor, error) {
-	q := `SELECT r.mailbox_id, r.message_id, r.subject, r.date_ts, r.unread
+	q := `SELECT r.mailbox_id, m.email, r.message_id, r.subject, r.date_ts, r.unread
 		FROM message_records r JOIN mailboxes m ON m.id = r.mailbox_id
 		WHERE m.account_id = ?1 AND r.sender_key = ?2`
 	args := []any{accountID, key, limit + 1}
@@ -292,7 +294,7 @@ func (s *Store) SenderEmails(ctx context.Context, accountID int64, key string, a
 	for rows.Next() {
 		var e Email
 		var unread int
-		if err := rows.Scan(&e.MailboxID, &e.MessageID, &e.Subject, &e.Date, &unread); err != nil {
+		if err := rows.Scan(&e.MailboxID, &e.MailboxEmail, &e.MessageID, &e.Subject, &e.Date, &unread); err != nil {
 			return nil, nil, err
 		}
 		e.Unread = unread == 1
@@ -307,4 +309,59 @@ func (s *Store) SenderEmails(ctx context.Context, accountID int64, key string, a
 	out = out[:limit]
 	last := out[len(out)-1]
 	return out, &EmailCursor{Date: last.Date, MailboxID: last.MailboxID, MessageID: last.MessageID}, nil
+}
+
+// ErrNoEmail means the account holds no such stored email.
+var ErrNoEmail = errors.New("no such email")
+
+// EmailFor reads one stored email of the account, with the Google subject of the mailbox that holds it.
+// An email of another account's mailbox gives ErrNoEmail (#43).
+func (s *Store) EmailFor(ctx context.Context, accountID, mailboxID int64, messageID string) (Email, string, error) {
+	var e Email
+	var subject string
+	var unread int
+	err := s.db.QueryRowContext(ctx,
+		`SELECT r.mailbox_id, m.email, m.google_subject, r.message_id, r.subject, r.date_ts, r.unread
+		 FROM message_records r JOIN mailboxes m ON m.id = r.mailbox_id
+		 WHERE m.account_id = ? AND r.mailbox_id = ? AND r.message_id = ?`,
+		accountID, mailboxID, messageID).Scan(&e.MailboxID, &e.MailboxEmail, &subject, &e.MessageID, &e.Subject, &e.Date, &unread)
+	if errors.Is(err, sql.ErrNoRows) {
+		return Email{}, "", ErrNoEmail
+	}
+	if err != nil {
+		return Email{}, "", err
+	}
+	e.Unread = unread == 1
+	return e, subject, nil
+}
+
+// MarkEmailRead records that Gmail took the read mark: the stored email loses its UNREAD label and
+// its unread flag, so its sender's unread count drops by one (#43, #44). It is idempotent.
+func (s *Store) MarkEmailRead(ctx context.Context, mailboxID int64, messageID string) error {
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+	var labels string
+	err = tx.QueryRowContext(ctx,
+		`SELECT labels FROM message_records WHERE mailbox_id = ? AND message_id = ?`, mailboxID, messageID).Scan(&labels)
+	if errors.Is(err, sql.ErrNoRows) {
+		return ErrNoEmail
+	}
+	if err != nil {
+		return err
+	}
+	var kept []string
+	for _, l := range strings.Split(labels, ",") {
+		if l != "" && l != "UNREAD" {
+			kept = append(kept, l)
+		}
+	}
+	if _, err := tx.ExecContext(ctx,
+		`UPDATE message_records SET labels = ?, unread = 0 WHERE mailbox_id = ? AND message_id = ?`,
+		strings.Join(kept, ","), mailboxID, messageID); err != nil {
+		return err
+	}
+	return tx.Commit()
 }
