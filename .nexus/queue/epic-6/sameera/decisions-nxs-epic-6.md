@@ -12,3 +12,8 @@
 - **Choice:** MarkRead removes only UNREAD through the access point's single send; the stored record drops UNREAD and its unread flag only on success.
 - **Why:** The list never shows read what Gmail still holds unread.
 - **Refuted alternative:** Optimistic local mark with rollback.
+
+## 2026-11-11 — Refresh on return re-reads through the last shown row
+- **Choice:** After a tap on an email link, the page script reloads #email-view in place (htmx.ajax, default swap) on visibilitychange/focus, with `through=<last row's cursor>`; it waits for any pending read mark first. The header now shows the sender's unread count.
+- **Why:** The same rows come back, so the page height and scroll offset hold, and the sort travels in the refresh address.
+- **Refuted alternative:** A full page reload, which shows only the first 50 rows and loses the scroll offset past them; an hx-get on the view, which would become the page's first hx-get.
