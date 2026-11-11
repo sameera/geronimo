@@ -12,6 +12,18 @@
 <main>
 {{end}}
 {{define "foot"}}</main>
+{{if .SignedIn}}<script>
+(function () {
+    function localDates(root) {
+        root.querySelectorAll("time[datetime]").forEach(function (el) {
+            var d = new Date(el.getAttribute("datetime"));
+            if (!isNaN(d)) { el.textContent = d.toLocaleDateString(); }
+        });
+    }
+    document.addEventListener("DOMContentLoaded", function () { localDates(document); });
+    document.addEventListener("htmx:afterSwap", function (e) { localDates(e.target); });
+})();
+</script>{{end}}
 </body>
 </html>
 {{end}}

@@ -85,3 +85,16 @@ section form button, section > form .button, main > p > .button { width: 100%; m
 /* Sign out */
 main > form:last-child button { width: 100%; color: var(--bad); border-color: color-mix(in srgb, var(--bad) 30%, var(--line)); }
 main > form:last-child button:hover { background: var(--bad-soft); }
+
+/* Sender view */
+.groups { list-style: none; margin: 0 14px; padding: 0; }
+.groups li { margin: 0 0 var(--s-2); }
+.group-row { display: flex; align-items: center; justify-content: space-between; gap: var(--s-3); min-height: 44px; padding: var(--s-2) var(--s-3); background: var(--surface); border: 1px solid var(--line); border-radius: var(--r-md); color: var(--ink); text-decoration: none; }
+.group-row:hover { background: var(--surface-2); }
+.who { display: flex; flex-direction: column; min-width: 0; flex: 1; }
+.name, .addr, .subject { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.name { font-weight: 650; }
+.addr { color: var(--mute); font-size: var(--fs-xs); }
+.stats { display: flex; flex-direction: column; align-items: flex-end; flex: none; font-size: var(--fs-xs); color: var(--mute); }
+.stats .total { font-size: var(--fs-md); font-weight: 700; color: var(--ink); }
+.more { display: flex; width: calc(100% - 28px); margin: var(--s-3) 14px; }

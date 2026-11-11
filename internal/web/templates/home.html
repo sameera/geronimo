@@ -11,6 +11,7 @@
             {{range .Mailboxes}}{{if .AccessRemoved}}<li>{{.Email}}: Access was removed. <a class="button reconnect" href="/connect">Reconnect</a></li>{{else}}<li>{{.Email}}: Connected</li>{{end}}
             {{end}}
         </ul>
+        <p><a class="button" href="/senders">View senders</a></p>
         <form id="connect-another" method="post" action="/connect/google/start"><button type="submit">Connect another Gmail account</button></form>
     </section>
     {{else}}
