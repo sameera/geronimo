@@ -122,8 +122,21 @@ func (s *Store) migrateSenders() error {
 // Sort orders sender groups. Every sort is descending, ties by address (D6).
 type Sort string
 
-// SortTotal is the default sort.
-const SortTotal Sort = "total"
+// The three sort fields. SortTotal is the default.
+const (
+	SortTotal  Sort = "total"
+	SortUnread Sort = "unread"
+	SortNewest Sort = "newest"
+)
+
+// ParseSort maps a page-address value to a sort; anything else is the default (D6).
+func ParseSort(v string) Sort {
+	switch Sort(v) {
+	case SortUnread, SortNewest:
+		return Sort(v)
+	}
+	return SortTotal
+}
 
 // SenderGroup is one row of the sender view.
 type SenderGroup struct {
@@ -158,6 +171,12 @@ func (s *Store) MailboxIDs(ctx context.Context, accountID int64) (map[string]int
 // The account mail set is every stored email of every mailbox linked to the account, whatever the mailbox status (D4, G9).
 func (s *Store) SenderGroups(ctx context.Context, accountID int64, sort Sort, limit int) ([]SenderGroup, int, error) {
 	order := `total DESC`
+	switch sort {
+	case SortUnread:
+		order = `unread_n DESC`
+	case SortNewest:
+		order = `(newest IS NULL), newest DESC`
+	}
 	q := `WITH mine AS (
 			SELECT r.sender_key, r.sender_name, r.date_ts, r.unread, r.mailbox_id, r.message_id
 			FROM message_records r JOIN mailboxes m ON m.id = r.mailbox_id WHERE m.account_id = ?1),

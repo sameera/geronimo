@@ -20,7 +20,25 @@
             if (!isNaN(d)) { el.textContent = d.toLocaleDateString(); }
         });
     }
-    document.addEventListener("DOMContentLoaded", function () { localDates(document); });
+    // Scroll offsets only, saved per page address in this tab. No mail data is stored.
+    function key() { return "scroll:" + location.pathname + location.search; }
+    function save() { sessionStorage.setItem(key(), String(Math.round(window.scrollY))); }
+    window.addEventListener("pagehide", save);
+    document.addEventListener("DOMContentLoaded", function () {
+        localDates(document);
+        var y = parseInt(sessionStorage.getItem(key()), 10);
+        if (!isNaN(y)) { window.scrollTo(0, y); }
+        var back = document.getElementById("back");
+        if (back) {
+            back.addEventListener("click", function (e) {
+                var ref = document.referrer;
+                if (ref && ref === new URL(back.getAttribute("href"), location.href).href) {
+                    e.preventDefault();
+                    history.back();
+                }
+            });
+        }
+    });
     document.addEventListener("htmx:afterSwap", function (e) { localDates(e.target); });
 })();
 </script>{{end}}

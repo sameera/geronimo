@@ -233,3 +233,88 @@ func TestEmailListIsSignedInOnly(t *testing.T) { // G21
 		t.Fatalf("status %d location %q", resp.StatusCode, location(resp))
 	}
 }
+
+func hrefs(body, class string) []string {
+	var out []string
+	for _, part := range strings.Split(body, `class="`+class+`" href="`)[1:] {
+		out = append(out, strings.ReplaceAll(part[:strings.Index(part, `"`)], "&amp;", "&"))
+	}
+	return out
+}
+
+func TestSenderViewSorts(t *testing.T) { // #42, D6, G15, G16
+	e := connectedEnv(t)
+	e.storeMail("one@example.com",
+		m("1", "big@x.com", "Mon, 02 Jan 2006 10:00:00 +0000"), m("2", "big@x.com", "Mon, 02 Jan 2006 11:00:00 +0000"),
+		m("3", "unr@x.com", "Tue, 03 Jan 2006 10:00:00 +0000", "UNREAD"),
+		m("4", "new@x.com", "Fri, 06 Jan 2006 10:00:00 +0000"),
+	)
+	order := func(path string) []string {
+		_, body := e.get(e.client, path)
+		var out []string
+		for _, h := range hrefs(body, "group-row") {
+			out = append(out, strings.TrimPrefix(strings.SplitN(h, "&", 2)[0], "/senders/emails?sender="))
+		}
+		return out
+	}
+	join := func(s []string) string { return strings.Join(s, ",") }
+	if got := join(order("/senders")); got != "big%40x.com,new%40x.com,unr%40x.com" {
+		t.Errorf("default = %s", got)
+	}
+	if got := join(order("/senders?sort=unread")); got != "unr%40x.com,big%40x.com,new%40x.com" {
+		t.Errorf("unread = %s", got)
+	}
+	if got := join(order("/senders?sort=newest")); got != "new%40x.com,unr%40x.com,big%40x.com" {
+		t.Errorf("newest = %s", got)
+	}
+	if got := join(order("/senders?sort=bogus")); got != "big%40x.com,new%40x.com,unr%40x.com" {
+		t.Errorf("bogus sort = %s", got)
+	}
+}
+
+func TestSortControlReplacesAddress(t *testing.T) { // #42, G16, D6
+	e := connectedEnv(t)
+	e.storeMail("one@example.com", m("1", "a@x.com", ""))
+	_, body := e.get(e.client, "/senders?sort=unread")
+	for _, want := range []string{`href="/senders?sort=total"`, `href="/senders?sort=unread"`, `href="/senders?sort=newest"`} {
+		if !strings.Contains(body, want) {
+			t.Errorf("no sort control %s", want)
+		}
+	}
+	if strings.Contains(body, "hx-push-url") || !strings.Contains(body, `hx-replace-url="true"`) {
+		t.Error("sort change must replace the address, not push")
+	}
+	if !strings.Contains(body, `aria-current="true"`) {
+		t.Error("chosen sort not marked")
+	}
+}
+
+func TestStateTravelsToListAndBack(t *testing.T) { // #42, G17
+	e := connectedEnv(t)
+	e.storeMail("one@example.com", m("1", "a@x.com", ""), m("2", "b@x.com", ""))
+	_, body := e.get(e.client, "/senders?sort=unread&n=200")
+	rows := hrefs(body, "group-row")
+	if len(rows) != 2 || !strings.Contains(rows[0], "sort=unread") || !strings.Contains(rows[0], "n=200") {
+		t.Fatalf("row hrefs = %v", rows)
+	}
+	_, list := e.get(e.client, rows[0])
+	if !strings.Contains(list, `id="back"`) || !strings.Contains(list, `href="/senders?n=200&amp;sort=unread"`) {
+		t.Errorf("list lacks back link to the exact view:\n%s", list)
+	}
+}
+
+func TestPageScriptSavesOnlyScrollPositions(t *testing.T) { // #42, G17, G18
+	e := connectedEnv(t)
+	_, page := e.get(e.client, "/senders")
+	body := between(page, "<script>", "</script>")
+	for _, want := range []string{"sessionStorage.setItem", "sessionStorage.getItem", "scrollY", "scrollTo", "history.back"} {
+		if !strings.Contains(body, want) {
+			t.Errorf("page script lacks %q", want)
+		}
+	}
+	for _, bad := range []string{"localStorage", "innerHTML", "textContent.", "document.cookie"} {
+		if strings.Contains(strings.ReplaceAll(body, "el.textContent = d.toLocaleDateString()", ""), bad) {
+			t.Errorf("page script uses %q", bad)
+		}
+	}
+}

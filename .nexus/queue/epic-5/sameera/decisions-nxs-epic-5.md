@@ -7,3 +7,8 @@
 - **Choice:** Load more carries `after=<date>:<mailbox>:<message>` in the address; the button swaps itself with the next rows.
 - **Why:** Reads strictly after the last row shown (D8), with no server state.
 - **Refuted alternative:** Offset paging.
+
+## 2026-11-11 — Sort change resets shown count; in-app back uses history only when referrer matches
+- **Choice:** Sort links reset the shown count to 100; the back link calls history.back() only when the referrer equals its address, else it follows the link.
+- **Why:** A new sort starts at the top; matching referrer avoids stepping back to an unrelated page.
+- **Refuted alternative:** Keep the shown count across sorts.

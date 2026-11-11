@@ -107,3 +107,6 @@ main > form:last-child button:hover { background: var(--bad-soft); }
 .email-row .subject { flex: 1; min-width: 0; }
 .email-row .meta { flex: none; font-size: var(--fs-xs); color: var(--mute); }
 .read-state { position: absolute; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
+.sorts { display: flex; gap: var(--s-2); margin: 0 14px var(--s-3); }
+.sorts a { display: inline-flex; align-items: center; min-height: 44px; padding: 0 var(--s-3); border: 1px solid var(--line); border-radius: var(--r-pill); text-decoration: none; }
+.sorts a[aria-current] { background: var(--brand-soft); color: var(--brand-soft-ink); border-color: var(--brand); }

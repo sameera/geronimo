@@ -37,23 +37,38 @@ type senderPage struct {
 	EmptyText string
 	Connect   bool
 	MoreHref  string
+	Sorts     []sortLink
+	BackHref  string
 }
 
 // viewState is the sender view's state, carried in its page address (D5).
 type viewState struct {
+	Sort  store.Sort
 	Shown int
 }
 
+type sortLink struct {
+	Label   string
+	Href    string
+	Current bool
+}
+
 func parseViewState(q url.Values) viewState {
-	v := viewState{Shown: groupChunk}
+	v := viewState{Sort: store.ParseSort(q.Get("sort")), Shown: groupChunk}
 	if n, err := strconv.Atoi(q.Get("n")); err == nil && n > 0 {
 		v.Shown = min(n, maxShown)
 	}
 	return v
 }
 
+// query writes the view state as a page-address query. The default sort stays out of the address.
 func (v viewState) query(shown int) string {
-	return "n=" + strconv.Itoa(shown)
+	q := url.Values{}
+	if v.Sort != store.SortTotal {
+		q.Set("sort", string(v.Sort))
+	}
+	q.Set("n", strconv.Itoa(shown))
+	return q.Encode()
 }
 
 // senders serves the sender view. It reads stored mail only: no Gmail call, no write (D4, G11).
@@ -65,7 +80,7 @@ func (s *Service) senders(w http.ResponseWriter, r *http.Request) {
 	}
 	ctx := r.Context()
 	view := parseViewState(r.URL.Query())
-	groups, total, err := s.Store.SenderGroups(ctx, sess.Account.ID, store.SortTotal, view.Shown)
+	groups, total, err := s.Store.SenderGroups(ctx, sess.Account.ID, view.Sort, view.Shown)
 	if err != nil {
 		s.Logger.Error("senders: groups", "err", err)
 		http.Error(w, "something went wrong", http.StatusInternalServerError)
@@ -82,7 +97,7 @@ func (s *Service) senders(w http.ResponseWriter, r *http.Request) {
 	data := senderPage{page: page{SignedIn: true, Name: sess.Account.Name, Email: sess.Account.Email}}
 	for _, g := range groups {
 		row := groupRow{
-			Href:    "/senders/emails?sender=" + url.QueryEscape(g.Key),
+			Href:    "/senders/emails?sender=" + url.QueryEscape(g.Key) + "&" + view.query(view.Shown),
 			Name:    g.Name,
 			Address: g.Address,
 			Total:   formatCount(g.Total),
@@ -103,6 +118,12 @@ func (s *Service) senders(w http.ResponseWriter, r *http.Request) {
 	}
 	if total > len(groups) {
 		data.MoreHref = "/senders?" + view.query(view.Shown+groupChunk)
+	}
+	for _, o := range []struct {
+		label string
+		sort  store.Sort
+	}{{"Total", store.SortTotal}, {"Unread", store.SortUnread}, {"Newest", store.SortNewest}} {
+		data.Sorts = append(data.Sorts, sortLink{Label: o.label, Href: "/senders?sort=" + string(o.sort), Current: o.sort == view.Sort})
 	}
 	if len(data.Rows) == 0 {
 		data.Empty = true

@@ -1,4 +1,5 @@
-{{define "sender_list"}}{{if .Empty}}<p role="status" class="message">{{.EmptyText}}{{if .Connect}} <a class="button" href="/connect">Connect Gmail</a>{{end}}</p>
+{{define "sender_list"}}<nav class="sorts" aria-label="Sort senders">{{range .Sorts}}<a href="{{.Href}}" hx-get="{{.Href}}" hx-target="#sender-list" hx-swap="innerHTML" hx-replace-url="true"{{if .Current}} aria-current="true"{{end}}>{{.Label}}</a>{{end}}</nav>
+{{if .Empty}}<p role="status" class="message">{{.EmptyText}}{{if .Connect}} <a class="button" href="/connect">Connect Gmail</a>{{end}}</p>
 {{else}}<ul class="groups">
 {{range .Rows}}<li><a class="group-row" href="{{.Href}}"><span class="who"><span class="name">{{.Name}}</span><span class="addr">{{.Address}}</span></span><span class="stats"><span class="total">{{.Total}}</span><span class="unread">{{.Unread}} unread</span>{{if .HasNewest}}<time datetime="{{.NewestISO}}">{{.NewestUTC}}</time>{{end}}</span></a></li>
 {{end}}</ul>

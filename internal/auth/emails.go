@@ -29,6 +29,7 @@ type emailPage struct {
 	Total         string
 	Rows          []emailRow
 	MoreHref      string
+	BackHref      string
 }
 
 func encodeCursor(c *store.EmailCursor) string {
@@ -85,6 +86,11 @@ func (s *Service) senderEmails(w http.ResponseWriter, r *http.Request) {
 	}
 	if next != nil {
 		data.MoreHref = "/senders/emails?sender=" + url.QueryEscape(key) + "&after=" + url.QueryEscape(encodeCursor(next))
+	}
+	view := parseViewState(q)
+	data.BackHref = "/senders?" + view.query(view.Shown)
+	if next != nil {
+		data.MoreHref += "&" + view.query(view.Shown)
 	}
 	if r.Header.Get("HX-Request") == "true" {
 		web.Render(w, http.StatusOK, "email_rows", data)

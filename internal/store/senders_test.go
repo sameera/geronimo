@@ -248,3 +248,39 @@ func TestEmailsAreScopedToAccountAndUnknownSenderIsEmpty(t *testing.T) { // G10
 		t.Fatalf("summary = %+v, %v", sum, err)
 	}
 }
+
+func TestGroupSorts(t *testing.T) { // D6, G15, G16
+	st, acct, mb := openSyncStore(t)
+	ctx := context.Background()
+	st.StoreMessages(ctx, mb, []Message{
+		msg("1", "big@x.com", "Mon, 02 Jan 2006 10:00:00 +0000"), msg("2", "big@x.com", "Mon, 02 Jan 2006 11:00:00 +0000"),
+		msg("3", "unr@x.com", "Tue, 03 Jan 2006 10:00:00 +0000", "UNREAD"),
+		msg("4", "new@x.com", "Fri, 06 Jan 2006 10:00:00 +0000"),
+		msg("5", "nodate@x.com", "", "UNREAD"),
+	}, nil)
+	keys := func(s Sort) []string {
+		g, _, err := st.SenderGroups(ctx, acct, s, 100)
+		if err != nil {
+			t.Fatal(err)
+		}
+		var out []string
+		for _, x := range g {
+			out = append(out, x.Key)
+		}
+		return out
+	}
+	eq := func(got []string, want ...string) {
+		t.Helper()
+		if len(got) != len(want) {
+			t.Fatalf("got %v want %v", got, want)
+		}
+		for i := range got {
+			if got[i] != want[i] {
+				t.Fatalf("got %v want %v", got, want)
+			}
+		}
+	}
+	eq(keys(SortTotal), "big@x.com", "new@x.com", "nodate@x.com", "unr@x.com")
+	eq(keys(SortUnread), "nodate@x.com", "unr@x.com", "big@x.com", "new@x.com")
+	eq(keys(SortNewest), "new@x.com", "unr@x.com", "big@x.com", "nodate@x.com")
+}

@@ -4,5 +4,5 @@
     <h1>{{.SenderName}}</h1>
     <p class="sender-head"><span class="addr">{{.SenderAddress}}</span> <span class="total">{{.Total}}</span></p>
     <div id="email-list" class="emails">{{template "email_rows" .}}</div>
-    <p><a href="/senders">All senders</a></p>
+    <p><a id="back" href="{{.BackHref}}">Back to senders</a></p>
 {{template "foot" .}}
