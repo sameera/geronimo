@@ -64,6 +64,8 @@ func run() error {
 		Checker:          connector,
 		Profiler:         mail,
 		Sync:             syncer,
+		Tokens:           connector,
+		Mail:             mail,
 		BaseURL:          cfg.BaseURL,
 		IdleLifetime:     cfg.IdleLifetime,
 		AbsoluteLifetime: cfg.AbsoluteLifetime,

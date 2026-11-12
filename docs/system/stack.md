@@ -29,7 +29,7 @@ Project type: full-stack web app. This file records the choices made so far.
 
 - **Connect flow**: separate from sign-in. Redirect address: `<GERONIMO_BASE_URL>/connect/google/callback`. Register it with the same Google client, next to the sign-in address.
 - **Scopes**: `openid`, `email` and `https://www.googleapis.com/auth/gmail.modify`. No other Gmail scope.
-- **Gmail access point**: `internal/gmail` is the only code that calls the Gmail API. It refuses full, raw and attachment requests. Every Gmail read, including epic #4's sync, goes through it.
+- **Gmail access point**: `internal/gmail` is the only code that calls the Gmail API. It refuses full, raw and attachment requests. Every Gmail read, including epic #4's sync, goes through it. Its one write is `MarkRead`, which removes only the `UNREAD` label from one message (epic #6). The sync's Gmail interface has no write.
 - **Token storage**: only the refresh token is stored, encrypted with AES-256-GCM under `GERONIMO_TOKEN_KEY`. Access tokens are never stored.
 
 ### Token key (`GERONIMO_TOKEN_KEY`)

@@ -173,8 +173,9 @@ func TestEmailListShowsSenderEmails(t *testing.T) { // #41, D2, G12, G23
 	if strings.Count(body, `class="email-row`) != 4 {
 		t.Errorf("rows = %d", strings.Count(body, `class="email-row`))
 	}
-	if strings.Contains(body, `class="email-row`) && strings.Contains(between(body, `class="email-row`, "</div>"), "<a ") {
-		t.Error("email rows must not be links")
+	// Epic #6 (#43 AC1) makes each row a link that opens the email in Gmail; nothing else in a row is a link.
+	if row := between(body, `class="email-row`, "</div>"); strings.Count(row, "<a ") != 1 || !strings.Contains(row, `<a class="email-open" href="https://mail.google.com/`) {
+		t.Errorf("email row must be exactly one link, to Gmail:\n%s", row)
 	}
 }
 

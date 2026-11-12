@@ -49,6 +49,30 @@
         }
     });
     document.addEventListener("htmx:afterSwap", function (e) { localDates(e.target); });
+    // After an email is opened in Gmail, the email view reloads in place on return, through the
+    // last row shown, so the shown rows, the scroll offset and the sort stay as they were (#44).
+    // It waits for a tap's read mark to finish, so the reloaded list carries it.
+    var opened = false, pending = 0;
+    function isRow(e) {
+        var el = e.detail && e.detail.elt;
+        return !!(el && el.matches && el.matches(".email-row"));
+    }
+    function refresh() {
+        var view = document.getElementById("email-view");
+        if (!view || !opened || pending > 0 || document.visibilityState !== "visible") { return; }
+        opened = false;
+        var url = view.getAttribute("data-refresh");
+        var rows = view.querySelectorAll(".email-row[data-cursor]");
+        if (rows.length) { url += "&through=" + encodeURIComponent(rows[rows.length - 1].getAttribute("data-cursor")); }
+        htmx.ajax("GET", url, view);
+    }
+    document.addEventListener("click", function (e) {
+        if (e.target.closest && e.target.closest("a.email-open")) { opened = true; }
+    });
+    document.addEventListener("visibilitychange", refresh);
+    window.addEventListener("focus", refresh);
+    document.addEventListener("htmx:beforeRequest", function (e) { if (isRow(e)) { pending++; } });
+    document.addEventListener("htmx:afterRequest", function (e) { if (isRow(e)) { pending--; refresh(); } });
 })();
 </script>{{end}}
 </body>

@@ -2,7 +2,8 @@
 //
 // It allows only account-profile and metadata-level requests: headers, labels, IDs
 // and the snippet. It refuses full, raw and attachment requests, because Geronimo
-// promises never to read message bodies. Every later epic that reads Gmail must go
+// promises never to read message bodies. Its one change to mail is MarkRead, which
+// removes the UNREAD label from one message and nothing else. Every later epic that reads Gmail must go
 // through this package. A test fails if any other code names the Gmail API.
 package gmail
 
@@ -197,6 +198,24 @@ func (c *Client) Metadata(ctx context.Context, accessToken, id string) (Message,
 	return m, nil
 }
 
+// WebURL is the address that opens one message in the Gmail web UI, in the signed-in
+// Google account whose address is mailbox (#43).
+func WebURL(mailbox, messageID string) string {
+	return "https://mail.google.com/mail/?authuser=" + url.QueryEscape(mailbox) + "#all/" + url.PathEscape(messageID)
+}
+
+// markReadBody removes the UNREAD label and changes no other label.
+const markReadBody = `{"removeLabelIds":["UNREAD"]}`
+
+// MarkRead removes the UNREAD label from one message (#43). It is the access point's only write.
+func (c *Client) MarkRead(ctx context.Context, accessToken, id string) error {
+	if id == "" || strings.ContainsAny(id, "/?#%\\") || strings.Contains(id, "..") {
+		return errors.New("gmail: request refused")
+	}
+	_, err := c.send(ctx, http.MethodPost, accessToken, c.base+"/users/me/messages/"+id+"/modify", strings.NewReader(markReadBody))
+	return err
+}
+
 // Get sends one allowed GET request and returns the response body. Errors carry the
 // status code only, never a response body or the token.
 func (c *Client) Get(ctx context.Context, accessToken, path string, q url.Values) ([]byte, error) {
@@ -207,11 +226,19 @@ func (c *Client) Get(ctx context.Context, accessToken, path string, q url.Values
 	if len(q) > 0 {
 		u += "?" + q.Encode()
 	}
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, u, nil)
+	return c.send(ctx, http.MethodGet, accessToken, u, nil)
+}
+
+// send is the one place a request leaves for Gmail.
+func (c *Client) send(ctx context.Context, method, accessToken, u string, body io.Reader) ([]byte, error) {
+	req, err := http.NewRequestWithContext(ctx, method, u, body)
 	if err != nil {
 		return nil, errors.New("gmail: cannot build request")
 	}
 	req.Header.Set("Authorization", "Bearer "+accessToken)
+	if body != nil {
+		req.Header.Set("Content-Type", "application/json")
+	}
 	resp, err := c.hc.Do(req)
 	if err != nil {
 		return nil, errors.New("gmail: request failed")
